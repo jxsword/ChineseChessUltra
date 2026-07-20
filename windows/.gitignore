@@ -1,0 +1,48 @@
+# Flutter
+.dart_tool/
+.packages
+build/
+*.iml
+.idea/
+.vscode/
+*.lock
+*.log
+*.swp
+.DS_Store
+
+# Android
+local.properties
+android/.gradle/
+android/app/build/
+android/build/
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+
+# Web
+web/build/
+
+# macOS
+macos/Pods/
+macos/.symlinks/
+macos/Flutter/ephemeral/
+
+# Windows
+windows/out/
+windows/Flutter/ephemeral/
+
+# Linux
+linux/ephemeral/
+
+# 引擎二进制（如果放在 assets/engines/ 下，建议保留但用占位符）
+# assets/engines/*.exe
+# assets/engines/pikafish*
+
+# 残局棋谱（可选，建议保留示例文件）
+# assets/puzzles/*.xqf
+# assets/puzzles/*.pgn
+
+tmp/

@@ -1,0 +1,264 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../model/board.dart';
+import '../model/board_state.dart';
+import '../model/move.dart';
+import '../model/piece.dart';
+
+/// 走法记录工具类，把 (from,to,piece) 序列化为带颜色与中文坐标的字符串。
+extension MoveNotation on Move {
+  /// 形如 "炮二平五" 风格的简易记法（红方使用汉字数字一二三...九，黑方用阿拉伯数字）。
+  String chineseNotation(Piece piece) {
+    String col(int c, bool red) {
+      const han = ['九', '八', '七', '六', '五', '四', '三', '二', '一'];
+      if (red) return han[c];
+      return '${c + 1}';
+    }
+
+    final red = piece.side.isRed;
+    final fromCol = col(from.col, red);
+    final toCol = col(to.col, red);
+    final sameCol = from.col == to.col;
+    final forward = to.row - from.row;
+    String action;
+    String target;
+    if (sameCol) {
+      final ahead = red ? forward < 0 : forward > 0;
+      action = ahead ? '进' : '退';
+      final steps = forward.abs();
+      target = red
+          ? const ['九', '八', '七', '六', '五', '四', '三', '二', '一'][9 - steps]
+          : '$steps';
+    } else if (from.row == to.row) {
+      action = '平';
+      target = toCol;
+    } else {
+      final ahead = red ? forward < 0 : forward > 0;
+      action = ahead ? '进' : '退';
+      target = toCol;
+    }
+    return '${piece.label}$fromCol$action$target';
+  }
+}
+
+/// 棋盘对弈 ViewModel。
+///
+/// 通过 Riverpod Notifier 暴露 [BoardState]，UI 通过 ref.watch 即可订阅。
+/// 同时承担：合法性校验、走子、悔棋、新游戏、自动判负等业务。
+///
+/// 走法历史 [Move] 列表由 ViewModel 内部维护（[_moveHistory]），
+/// 每次产生新快照时一并写入 [BoardState]，避免丢失。
+class BoardViewModel extends Notifier<BoardState> {
+  late Board _board;
+  late List<Move> _moveHistory;
+
+  @override
+  BoardState build() {
+    _board = Board.initial();
+    _moveHistory = [];
+    // 直接构造初始状态，避免在 `_snapshot()` 中访问 `this.state` 导致 "uninitialized provider"。
+    final turn = _board.turn;
+    final isCheck = _board.isCheck(turn);
+    return BoardState(
+      fen: _board.toFen(),
+      moveHistory: const [],
+      isRedTurn: _board.isRedTurn,
+      isCheck: isCheck,
+      result: null,
+      selected: null,
+      legalTargets: const [],
+      lastMove: null,
+    );
+  }
+
+  Board get board => _board;
+
+  /// 当前是否轮到红方走。
+  bool get isRedTurn => _board.isRedTurn;
+
+  /// 用当前棋盘生成不可变快照。
+  ///
+  /// 可选参数：[selected]/[legalTargets]/[lastMove] 仅在走子/选中时传入；
+  /// 若为 null 则保持空值（恢复棋局时由调用方显式传入）。
+  BoardState _snapshot({
+    Position? selected,
+    List<Position>? legalTargets,
+    Move? lastMove,
+  }) {
+    final turn = _board.turn;
+    final isCheck = _board.isCheck(turn);
+    GameResult? result;
+    if (_board.isCheckmate(turn)) {
+      result = turn.isRed ? GameResult.blackWins : GameResult.redWins;
+    } else if (_board.isStalemate(turn)) {
+      result = GameResult.draw;
+    }
+    return BoardState(
+      fen: _board.toFen(),
+      moveHistory: List.unmodifiable(_moveHistory),
+      isRedTurn: _board.isRedTurn,
+      isCheck: isCheck,
+      result: result,
+      selected: selected,
+      legalTargets: legalTargets ?? const [],
+      lastMove: lastMove,
+    );
+  }
+
+  /// 从外部恢复历史走法，逐手 replay。
+  ///
+  /// [moves] 的每条记录为 [fromCol, fromRow, toCol, toRow] 四元组。
+  ///
+  /// 恢复期间不触发 state 更新，仅在完成后通知一次。
+  void restore({required String fen, required List<List<int>> moves}) {
+    try {
+      _board = Board.fromFen(fen);
+    } on Object {
+      // FEN 无效则用初始局面，避免崩溃。
+      _board = Board.initial();
+    }
+
+    _moveHistory = [];
+    for (final m in moves) {
+      if (m.length != 4) continue; // 跳过不完整的数据
+      final fromPos = Position(m[0], m[1]);
+      final toPos = Position(m[2], m[3]);
+
+      // 跳过越界的走法（防止历史数据错误导致崩溃）。
+      if (!Board.inBoard(fromPos.col, fromPos.row) ||
+          !Board.inBoard(toPos.col, toPos.row)) {
+        continue;
+      }
+
+      final piece = _board.pieceAtP(fromPos);
+      if (piece == null) continue; // 源格无棋子（数据不一致），跳过
+
+      final move = Move(from: fromPos, to: toPos);
+      final applied = _board.applyMove(move);
+      _moveHistory.add(Move(
+        from: applied.from,
+        to: applied.to,
+        piece: piece,
+        captured: applied.captured,
+      ));
+    }
+
+    // 恢复后清空选中/合法目标，但保留 lastMove 用于高亮。
+    final lastMove = _moveHistory.isEmpty ? null : _moveHistory.last;
+    final restoredState = _snapshot(
+      selected: null,
+      legalTargets: const [],
+      lastMove: lastMove,
+    );
+
+    // 异步通知 UI 更新，避免阻塞恢复过程。
+    Future.microtask(() {
+      state = restoredState;
+    });
+  }
+
+  /// 处理点击事件。
+  ///
+  /// - 若点击空格或对方棋子且无选中：忽略。
+  /// - 若点击己方棋子：选中并展示合法走法。
+  /// - 若已选中且点击在合法走法目标：执行走子。
+  /// - 若已选中但点击非合法走法目标：清空选中或切换选中。
+  void onTap(int col, int row) {
+    if (state.isFinished) return;
+    final tapped = _board.pieceAt(col, row);
+    final selected = state.selected;
+
+    if (selected != null) {
+      // 已选中，判断是否点击合法目标。
+      final isLegalTarget =
+          state.legalTargets.any((p) => p.col == col && p.row == row);
+      if (isLegalTarget) {
+        _executeMove(from: selected, to: Position(col, row));
+        return;
+      }
+      // 点击的是己方另一棋子 → 切换选中。
+      if (tapped != null && tapped.side == _board.turn) {
+        _select(col, row);
+        return;
+      }
+      // 否则取消选中。
+      state = state.copyWith(
+        selected: null,
+        legalTargets: const <Position>[],
+      );
+      return;
+    }
+
+    // 未选中，必须点击己方棋子。
+    if (tapped != null && tapped.side == _board.turn) {
+      _select(col, row);
+    }
+  }
+
+  void _select(int col, int row) {
+    final pos = Position(col, row);
+    final legal = _board.legalMovesFor(pos).map((m) => m.to).toList();
+    state = state.copyWith(selected: pos, legalTargets: legal);
+  }
+
+  void _executeMove({required Position from, required Position to}) {
+    final piece = _board.pieceAtP(from)!;
+    final applied = _board.applyMove(Move(from: from, to: to));
+    // 把 piece 信息附到 move history 的条目上，供走法记录展示。
+    final record = Move(
+      from: applied.from,
+      to: applied.to,
+      piece: piece,
+      captured: applied.captured,
+    );
+    _moveHistory.add(record);
+
+    final snapshot = _snapshot(lastMove: applied);
+    state = snapshot.copyWith(
+      selected: null,
+      legalTargets: const <Position>[],
+    );
+
+    // Debug：输出中文记法。
+    assert(() {
+      // ignore: avoid_print
+      print('Move: ${record.toString()} (${record.chineseNotation(piece)})');
+      return true;
+    }());
+  }
+
+  /// 悔棋一步。
+  ///
+  /// 撤销最近一次走子，并清空选中。
+  void undo() {
+    if (_moveHistory.isEmpty) return;
+    final last = _moveHistory.removeLast();
+    _board.undoMove(last);
+    final snapshot = _snapshot();
+    state = snapshot.copyWith(
+      selected: null,
+      legalTargets: const <Position>[],
+      lastMove: _moveHistory.isEmpty ? null : _moveHistory.last,
+    );
+  }
+
+  /// 重置为新游戏。
+  void newGame() {
+    _board = Board.initial();
+    _moveHistory = [];
+    state = _snapshot(
+      selected: null,
+      legalTargets: const [],
+      lastMove: null,
+    );
+  }
+
+  /// 将当前局面状态序列化为可保存数据。
+  ({String fen, List<Move> moves}) serialize() {
+    return (fen: state.fen, moves: List.from(_moveHistory));
+  }
+}
+
+/// 全局 Provider。
+final boardViewModelProvider =
+    NotifierProvider<BoardViewModel, BoardState>(BoardViewModel.new);

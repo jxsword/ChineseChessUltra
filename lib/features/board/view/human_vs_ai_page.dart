@@ -1,12 +1,19 @@
+import 'dart:isolate';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../shared/engine/ai_engine.dart';
 import '../model/board_state.dart';
+import '../model/move.dart';
 import '../viewmodel/board_vm.dart';
 import '../view/widgets/board_widget.dart';
 import '../view/widgets/side_panel.dart';
 
-/// 人机对战页面
+/// 人机对战页面。
+///
+/// 玩家执红先行，AI 执黑。玩家走子完成后（[BoardWidget.onMoved] 回调），
+/// 在独立 Isolate 中用内置引擎计算应手并落到棋盘上。
 class HumanVsAiPage extends ConsumerStatefulWidget {
   const HumanVsAiPage({super.key});
 
@@ -16,7 +23,14 @@ class HumanVsAiPage extends ConsumerStatefulWidget {
 
 class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
   bool _isAiThinking = false;
-  String _aiStatus = '';
+
+  /// AI 难度（1-5，对应内置引擎搜索强度）。
+  int _difficulty = 3;
+
+  /// 对局代数：新游戏/悔棋后自增，使过期的 AI 计算结果作废。
+  int _gameSeq = 0;
+
+  static const _difficultyNames = {1: '初级', 2: '中级', 3: '高级', 4: '专家', 5: '大师'};
 
   @override
   Widget build(BuildContext context) {
@@ -117,10 +131,6 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
                     const SizedBox(height: 16),
                     _buildAiLevelSelector(),
                     const SizedBox(height: 16),
-                    _buildTimeControl(),
-                    const SizedBox(height: 16),
-                    _buildGameMode(),
-                    const SizedBox(height: 16),
                     _buildActionButtons(),
                   ],
                 ),
@@ -155,77 +165,18 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
         ),
         const SizedBox(height: 8),
         DropdownButton<int>(
-          value: 3,
-          items: const [
-            DropdownMenuItem(value: 1, child: Text('初级')),
-            DropdownMenuItem(value: 2, child: Text('中级')),
-            DropdownMenuItem(value: 3, child: Text('高级')),
-            DropdownMenuItem(value: 4, child: Text('专家')),
-            DropdownMenuItem(value: 5, child: Text('大师')),
+          value: _difficulty,
+          items: [
+            for (final level in _difficultyNames.keys)
+              DropdownMenuItem(value: level, child: Text(_difficultyNames[level]!)),
           ],
-          onChanged: (value) {
-            // TODO: 实现AI难度设置
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildTimeControl() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '时间控制',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            const Text('不限时'),
-            Radio<int>(
-              value: 0,
-              groupValue: 0,
-              onChanged: (value) {
-                // TODO: 实现时间控制
-              },
-            ),
-            const SizedBox(width: 16),
-            const Text('限时'),
-            Radio<int>(
-              value: 1,
-              groupValue: 0,
-              onChanged: (value) {
-                // TODO: 实现时间控制
-              },
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGameMode() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          '游戏模式',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 8),
-        SwitchListTile(
-          title: const Text('显示AI思考过程'),
-          value: true,
-          onChanged: (value) {
-            // TODO: 实现思考过程显示
-          },
+          onChanged: _isAiThinking
+              ? null
+              : (value) {
+                  if (value != null) {
+                    setState(() => _difficulty = value);
+                  }
+                },
         ),
       ],
     );
@@ -246,7 +197,7 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
         ElevatedButton.icon(
           icon: const Icon(Icons.undo),
           label: const Text('悔棋'),
-          onPressed: _undoMove,
+          onPressed: _isAiThinking ? null : _undoMove,
           style: ElevatedButton.styleFrom(
             minimumSize: const Size(double.infinity, 40),
           ),
@@ -265,21 +216,42 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
   }
 
   Widget _buildAiStatus() {
+    final state = ref.watch(boardViewModelProvider);
+    final String text;
+    final Color color;
+    if (state.result != null) {
+      text = switch (state.result!) {
+        GameResult.redWins => '对局结束：红方获胜',
+        GameResult.blackWins => '对局结束：黑方获胜',
+        GameResult.draw => '对局结束：和棋',
+      };
+      color = Colors.blue;
+    } else if (_isAiThinking) {
+      text = 'AI 正在思考...';
+      color = Colors.orange;
+    } else if (state.isCheck) {
+      text = state.isRedTurn ? '等待玩家走棋（红方被将军！）' : '等待玩家走棋';
+      color = Colors.red;
+    } else {
+      text = '等待玩家走棋';
+      color = Colors.green;
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
-      color: _isAiThinking ? Colors.yellow.withOpacity(0.1) : Colors.grey.withOpacity(0.05),
+      color: color.withOpacity(0.08),
       child: Row(
         children: [
           Icon(
             _isAiThinking ? Icons.hourglass_empty : Icons.check_circle,
-            color: _isAiThinking ? Colors.orange : Colors.green,
+            color: color,
           ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              _isAiThinking ? 'AI 正在思考... $_aiStatus' : '等待玩家走棋',
+              text,
               style: TextStyle(
-                color: _isAiThinking ? Colors.orange : Colors.green,
+                color: color,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -298,16 +270,20 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // 对局控制
+  // ---------------------------------------------------------------------------
+
   void _newGame() {
-    ref.read(boardViewModelProvider.notifier).newGame();
-    setState(() {
-      _isAiThinking = false;
-      _aiStatus = '';
-    });
+    _gameSeq++; // 作废仍在计算中的 AI 应手
+    final viewModel = ref.read(boardViewModelProvider.notifier);
+    viewModel.newGame();
+    setState(() => _isAiThinking = false);
   }
 
   void _undoMove() {
-    ref.read(boardViewModelProvider.notifier).undo();
+    _gameSeq++; // 作废仍在计算中的 AI 应手（防御性，正常悔棋时 AI 不在思考）
+    ref.read(boardViewModelProvider.notifier).undoRound();
   }
 
   void _saveGame() {
@@ -320,28 +296,48 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
     );
   }
 
+  /// 玩家走子完成后的回调：对局未结束则轮到 AI（黑方）应手。
   void _onMoveFinished() {
-    // TODO: 实现AI走棋逻辑
-    setState(() {
-      _isAiThinking = true;
-      _aiStatus = '分析局面中...';
-    });
+    final state = ref.read(boardViewModelProvider);
+    if (state.result != null) return;
+    _triggerAiMove();
+  }
 
-    // 模拟AI思考时间
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      
-      setState(() {
-        _isAiThinking = false;
-        _aiStatus = '';
-      });
-      
-      // TODO: 实际的AI走棋逻辑
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('AI 走棋完成'),
-        ),
+  /// 在独立 Isolate 中计算 AI 应手，避免阻塞 UI。
+  Future<void> _triggerAiMove() async {
+    final viewModel = ref.read(boardViewModelProvider.notifier);
+    // 必须在 await 前完成：棋盘快照与难度值要能被发送到 Isolate。
+    final boardSnapshot = viewModel.board.copy();
+    final difficulty = _difficulty;
+    final seq = _gameSeq;
+
+    viewModel.lockInput();
+    setState(() => _isAiThinking = true);
+
+    Move? bestMove;
+    try {
+      bestMove = await Isolate.run(
+        () => ChessAi.findBestMove(boardSnapshot, difficulty: difficulty),
       );
-    });
+    } on Object {
+      // Isolate 不可用时（极少数平台限制）退化为同步计算。
+      bestMove = ChessAi.findBestMove(boardSnapshot, difficulty: difficulty);
+    }
+
+    if (!mounted || seq != _gameSeq) return; // 页面已离开或对局已重开/悔棋
+
+    setState(() => _isAiThinking = false);
+    viewModel.unlockInput();
+
+    // null 通常意味着 AI 已无合法走法（将死/困毙），结果由棋盘状态呈现。
+    if (bestMove == null) return;
+    final applied = viewModel.playMove(bestMove.from, bestMove.to);
+    assert(() {
+      if (!applied) {
+        // ignore: avoid_print
+        print('AI 应手被拒绝: $bestMove');
+      }
+      return true;
+    }());
   }
 }

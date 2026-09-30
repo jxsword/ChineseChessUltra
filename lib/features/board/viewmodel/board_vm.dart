@@ -52,6 +52,9 @@ class BoardViewModel extends Notifier<BoardState> {
   late Board _board;
   late List<Move> _moveHistory;
 
+  /// 输入锁：AI 思考期间禁止玩家点击棋盘（人机模式使用）。
+  bool _inputLocked = false;
+
   @override
   BoardState build() {
     _board = Board.initial();
@@ -164,7 +167,7 @@ class BoardViewModel extends Notifier<BoardState> {
   /// - 若已选中且点击在合法走法目标：执行走子。
   /// - 若已选中但点击非合法走法目标：清空选中或切换选中。
   void onTap(int col, int row) {
-    if (state.isFinished) return;
+    if (_inputLocked || state.isFinished) return;
     final tapped = _board.pieceAt(col, row);
     final selected = state.selected;
 
@@ -227,11 +230,47 @@ class BoardViewModel extends Notifier<BoardState> {
     }());
   }
 
+  /// 直接执行一步走子（供 AI 应手调用），并校验合法性。
+  ///
+  /// 返回 false 表示走子非法（起点无己方棋子、目标不合法或对局已结束），
+  /// 此时状态不变。
+  bool playMove(Position from, Position to) {
+    if (state.isFinished) return false;
+    final piece = _board.pieceAtP(from);
+    if (piece == null || piece.side != _board.turn) return false;
+    final isLegal =
+        _board.legalMovesFor(from).any((m) => m.to.col == to.col && m.to.row == to.row);
+    if (!isLegal) return false;
+    _executeMove(from: from, to: to);
+    return true;
+  }
+
+  /// 锁定/解锁棋盘输入（AI 思考期间锁定，防止玩家替 AI 走子）。
+  void lockInput() => _inputLocked = true;
+  void unlockInput() => _inputLocked = false;
+
+  /// 悔一整轮（人机模式）：同时撤销 AI 的应手与玩家最近一手。
+  ///
+  /// 若历史中只有玩家的走子，则只撤销那一手。
+  void undoRound() {
+    if (_inputLocked || _moveHistory.isEmpty) return;
+    if (_moveHistory.last.piece?.side == Side.black) {
+      _undoOnce();
+    }
+    if (_moveHistory.isNotEmpty && _moveHistory.last.piece?.side == Side.red) {
+      _undoOnce();
+    }
+  }
+
   /// 悔棋一步。
   ///
   /// 撤销最近一次走子，并清空选中。
   void undo() {
     if (_moveHistory.isEmpty) return;
+    _undoOnce();
+  }
+
+  void _undoOnce() {
     final last = _moveHistory.removeLast();
     _board.undoMove(last);
     final snapshot = _snapshot();
@@ -244,6 +283,7 @@ class BoardViewModel extends Notifier<BoardState> {
 
   /// 重置为新游戏。
   void newGame() {
+    _inputLocked = false;
     _board = Board.initial();
     _moveHistory = [];
     state = _snapshot(

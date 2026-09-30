@@ -3,10 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../model/puzzle_data.dart';
 import '../viewmodel/puzzle_vm.dart';
-import '../../board/model/board.dart';
-import '../../board/model/fen.dart';
-import '../../board/view/widgets/board_widget.dart';
-import '../../board/viewmodel/board_vm.dart';
+import 'widgets/demo_board_widget.dart';
 
 /// 残局详情页面
 class PuzzleDetailPage extends ConsumerStatefulWidget {
@@ -192,92 +189,142 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
+        child: Column(
           children: [
-            IconButton(
-              icon: const Icon(Icons.play_arrow),
-              onPressed: _startDemo,
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.green,
-                disabledForegroundColor: Colors.grey,
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.pause),
-              onPressed: _pauseDemo,
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.orange,
-                disabledForegroundColor: Colors.grey,
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.stop),
-              onPressed: _stopDemo,
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.red,
-                disabledForegroundColor: Colors.grey,
-              ),
-            ),
-            const SizedBox(width: 16),
-            const Text('速度:'),
-            const SizedBox(width: 8),
-            DropdownButton<PuzzleDemoParams>(
-              value: PuzzleDemoParams.normal,
-              items: [
-                const DropdownMenuItem(
-                  value: PuzzleDemoParams.slow,
-                  child: Text('慢速'),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.play_arrow),
+                  onPressed: _startDemo,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    disabledForegroundColor: Colors.grey,
+                  ),
                 ),
-                const DropdownMenuItem(
-                  value: PuzzleDemoParams.normal,
-                  child: Text('正常'),
+                IconButton(
+                  icon: const Icon(Icons.pause),
+                  onPressed: _pauseDemo,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    disabledForegroundColor: Colors.grey,
+                  ),
                 ),
-                const DropdownMenuItem(
-                  value: PuzzleDemoParams.fast,
-                  child: Text('快速'),
+                IconButton(
+                  icon: const Icon(Icons.stop),
+                  onPressed: _stopDemo,
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    disabledForegroundColor: Colors.grey,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                const Text('速度:'),
+                const SizedBox(width: 8),
+                _buildSpeedDropdown(state),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.loop),
+                  onPressed: () {
+                    ref.read(puzzleViewModelProvider.notifier).setDemoMode(true);
+                  },
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.green.withOpacity(0.8),
+                  ),
                 ),
               ],
-              onChanged: (value) {
-                if (value != null) {
-                  ref.read(puzzleViewModelProvider.notifier).setDemoSpeed(value);
-                }
-              },
             ),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.loop),
-              onPressed: () {
-                ref.read(puzzleViewModelProvider.notifier).setDemoMode(true);
-              },
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.green.withOpacity(0.8),
-              ),
-            ),
+            const SizedBox(height: 8),
+            _buildSpeedSlider(state),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBoardArea() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = Size(
-          constraints.maxWidth.isFinite ? constraints.maxWidth : 400,
-          constraints.maxHeight.isFinite ? constraints.maxHeight : 400,
-        );
-        return Center(
-          child: SizedBox(
-            width: size.width,
-            height: size.height,
-            child: BoardWidget(onMoved: () {}),
+  /// 速度下拉框：预设三档；当前为自定义间隔时追加"自定义"项以正确回显。
+  Widget _buildSpeedDropdown(PuzzleState state) {
+    final presets = [
+      PuzzleDemoParams.slow,
+      PuzzleDemoParams.normal,
+      PuzzleDemoParams.fast,
+    ];
+    final isPreset =
+        presets.any((p) => identical(p, state.demoParams) || p == state.demoParams);
+    return DropdownButton<PuzzleDemoParams>(
+      value: state.demoParams,
+      items: [
+        DropdownMenuItem(
+          value: PuzzleDemoParams.slow,
+          child: Text(_speedLabel(PuzzleDemoParams.slow)),
+        ),
+        DropdownMenuItem(
+          value: PuzzleDemoParams.normal,
+          child: Text(_speedLabel(PuzzleDemoParams.normal)),
+        ),
+        DropdownMenuItem(
+          value: PuzzleDemoParams.fast,
+          child: Text(_speedLabel(PuzzleDemoParams.fast)),
+        ),
+        if (!isPreset)
+          DropdownMenuItem(
+            value: state.demoParams,
+            child: Text('自定义 ${_speedLabel(state.demoParams)}'),
           ),
-        );
+      ],
+      onChanged: (value) {
+        if (value != null) {
+          ref.read(puzzleViewModelProvider.notifier).setDemoSpeed(value);
+        }
       },
     );
   }
 
+  /// 速度滑块：按走子间隔（毫秒/步）自由调节，范围 200ms–4000ms。
+  Widget _buildSpeedSlider(PuzzleState state) {
+    const minMs = 200.0;
+    const maxMs = 4000.0;
+    final value = state.demoParams.interval.toDouble().clamp(minMs, maxMs);
+    return Row(
+      children: [
+        const Icon(Icons.speed, size: 20),
+        Expanded(
+          child: Slider(
+            value: value,
+            min: minMs,
+            max: maxMs,
+            divisions: ((maxMs - minMs) / 100).round(),
+            label: _speedLabel(state.demoParams),
+            onChanged: (v) {
+              ref
+                  .read(puzzleViewModelProvider.notifier)
+                  .setCustomInterval((v / 100).round() * 100);
+            },
+          ),
+        ),
+        SizedBox(
+          width: 72,
+          child: Text(
+            _speedLabel(state.demoParams),
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 速度文案：以"秒/步"展示走子间隔。
+  String _speedLabel(PuzzleDemoParams params) {
+    final seconds = params.interval / 1000;
+    return '${seconds.toStringAsFixed(1)} 秒/步';
+  }
+
+  Widget _buildBoardArea() {
+    // 演示专用只读棋盘：由 PuzzleViewModel 播放的局面驱动。
+    return const DemoBoardWidget();
+  }
+
   Widget _buildMoveList() {
+    final currentMoveIndex = ref.watch(puzzleViewModelProvider).currentMoveIndex;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -302,7 +349,7 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
                   itemCount: widget.puzzle.moves.length,
                   itemBuilder: (context, index) {
                     final move = widget.puzzle.moves[index];
-                    final isCurrent = ref.read(puzzleViewModelProvider).currentMoveIndex == index;
+                    final isCurrent = currentMoveIndex == index;
                     return Container(
                       width: 80,
                       margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -413,8 +460,15 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
   }
 
   void _startDemo() {
-    ref.read(puzzleViewModelProvider.notifier).initializePuzzle(widget.puzzle);
-    ref.read(puzzleViewModelProvider.notifier).startDemo();
+    final state = ref.read(puzzleViewModelProvider);
+    final notifier = ref.read(puzzleViewModelProvider.notifier);
+    if (state.demoState == PuzzleDemoState.paused) {
+      // 暂停中再次点击播放 = 继续演示，不重置进度。
+      notifier.resumeDemo();
+    } else {
+      notifier.initializePuzzle(widget.puzzle);
+      notifier.startDemo();
+    }
   }
 
   void _pauseDemo() {

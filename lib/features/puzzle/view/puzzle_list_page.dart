@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../model/puzzle_data.dart';
-import '../viewmodel/puzzle_vm.dart';
 import 'puzzle_detail_page.dart';
 
 /// 残局选关列表页面
@@ -20,7 +19,7 @@ class _PuzzleListPageState extends ConsumerState<PuzzleListPage> {
     ParsedPuzzle(
       id: 'puzzle_001',
       initialFen: 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1',
-      solutionMoves: ['h3e3', 'h9g7', 'h3e7'],
+      solutionMoves: ['h2e2', 'h9g7', 'e3e4', 'b9c7', 'e4e5', 'c7d5', 'e5e6'],
       title: '炮打三军',
       description: '经典的残局杀法演示',
       source: '适情雅趣',
@@ -30,7 +29,7 @@ class _PuzzleListPageState extends ConsumerState<PuzzleListPage> {
     ParsedPuzzle(
       id: 'puzzle_002',
       initialFen: 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1',
-      solutionMoves: ['c3e3', 'h10g8', 'e3e7', 'g8f6', 'e7e8'],
+      solutionMoves: ['h2e2', 'c6c5', 'e3e4', 'c5c4', 'e4e5', 'c4d4', 'e5e6'],
       title: '马炮争功',
       description: '马炮配合的精妙杀法',
       source: '竹香斋',
@@ -40,7 +39,7 @@ class _PuzzleListPageState extends ConsumerState<PuzzleListPage> {
     ParsedPuzzle(
       id: 'puzzle_003',
       initialFen: 'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1',
-      solutionMoves: ['a3a5', 'h10g8', 'a5a6', 'g8f6', 'a6a7'],
+      solutionMoves: ['a3a4', 'b9c7', 'a4a5', 'h9g7', 'a5a6', 'g7f5', 'a6b6'],
       title: '单车破士象',
       description: '单车残局的基本杀法',
       source: '象棋经典',

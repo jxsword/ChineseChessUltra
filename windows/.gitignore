@@ -32,7 +32,7 @@ macos/Flutter/ephemeral/
 
 # Windows
 windows/out/
-windows/Flutter/ephemeral/
+windows/flutter/ephemeral/
 
 # Linux
 linux/ephemeral/

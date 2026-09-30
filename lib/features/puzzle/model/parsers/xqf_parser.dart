@@ -1,7 +1,6 @@
 import 'package:logging/logging.dart';
-import 'dart:convert';
 
 import '../../../board/model/fen.dart';
-import '../../../board/model/move.dart';
+import '../../../board/model/piece.dart';
 import '../puzzle_data.dart';
 import '../puzzle_parser.dart';

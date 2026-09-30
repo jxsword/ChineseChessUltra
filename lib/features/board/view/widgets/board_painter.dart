@@ -5,6 +5,7 @@ import '../../model/board_state.dart';
 import '../../model/move.dart';
 import '../../model/piece.dart';
 import '../../../../shared/constants.dart';
+import 'board_layout.dart';
 
 /// 绘制 9×10 棋盘 + 棋子 + 选中/合法走法高亮。
 ///
@@ -22,27 +23,14 @@ class BoardPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    // 计算 cell 大小：纵向有 9 个间隔（10 条线），横向有 8 个间隔（9 条线）。
-    // 留出 padding 用于绘制外框。
-
-    // print('BoardPainter size: $size');
-
-    const padding = 24.0;
-    final innerWidth = size.width - padding * 2;
-    final innerHeight = size.height - padding * 2;
-    final cellW = innerWidth / 8;
-    final cellH = innerHeight / 9;
-    final cell = cellW < cellH ? cellW : cellH;
-    final originX = (size.width - cell * 8) / 2;
-    final originY = (size.height - cell * 9) / 2;
-
-    final offsetOf = (int col, int row) => Offset(
-          originX + col * cell,
-          originY + row * cell,
-        );
+    final layout = BoardLayout.fromSize(size);
+    final cell = layout.cell;
+    final originX = layout.originX;
+    final originY = layout.originY;
+    final offsetOf = layout.offsetOf;
 
     _drawBackground(canvas, size);
-    _drawGrid(canvas, originX, originY, cell, offsetOf);
+    _drawGrid(canvas, layout);
     _drawLastMove(canvas, cell, offsetOf);
     _drawSelectedAndHints(canvas, cell, offsetOf);
     _drawPieces(canvas, cell, offsetOf);
@@ -53,13 +41,11 @@ class BoardPainter extends CustomPainter {
     canvas.drawRect(Offset.zero & size, paint);
   }
 
-  void _drawGrid(
-    Canvas canvas,
-    double originX,
-    double originY,
-    double cell,
-    Offset Function(int, int) offsetOf,
-  ) {
+  void _drawGrid(Canvas canvas, BoardLayout layout) {
+    final originX = layout.originX;
+    final originY = layout.originY;
+    final cell = layout.cell;
+    final offsetOf = layout.offsetOf;
     final linePaint = Paint()
       ..color = const Color(AppColors.boardLine)
       ..style = PaintingStyle.stroke
@@ -69,11 +55,10 @@ class BoardPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4.0;
 
-    // 外边框（双层）。
+    // 外边框（双层），外扩到能完整包住边缘交点上的棋子。
     final outer = Rect.fromPoints(
-      Offset(originX - cell * 0.18, originY - cell * 0.18),
-      Offset(originX + 8 * cell + cell * 0.18,
-          originY + 9 * cell + cell * 0.18),
+      offsetOf(0, 0) - Offset(layout.borderMargin, layout.borderMargin),
+      offsetOf(8, 9) + Offset(layout.borderMargin, layout.borderMargin),
     );
     canvas.drawRect(outer, borderPaint);
 

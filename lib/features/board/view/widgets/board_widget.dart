@@ -6,6 +6,7 @@ import '../../model/board_state.dart';
 import '../../model/move.dart';
 import '../../model/piece.dart';
 import '../../viewmodel/board_vm.dart';
+import 'board_layout.dart';
 import 'board_painter.dart';
 
 /// 棋盘交互层：负责点击命中检测 + 走子动画。
@@ -39,12 +40,9 @@ class _BoardWidgetState extends ConsumerState<BoardWidget>
     final viewModel = ref.read(boardViewModelProvider.notifier);
     final board = viewModel.board;
 
-    final cell = _cellSize(size);
-    final originX = (size.width - cell * 8) / 2;
-    final originY = (size.height - cell * 9) / 2;
-
-    final col = ((localPosition.dx - originX) / cell).round();
-    final row = ((localPosition.dy - originY) / cell).round();
+    final layout = BoardLayout.fromSize(size);
+    final col = ((localPosition.dx - layout.originX) / layout.cell).round();
+    final row = ((localPosition.dy - layout.originY) / layout.cell).round();
     if (col < 0 || col > 8 || row < 0 || row > 9) return;
 
     // 若点击为合法走法目标，先触发动画再真正应用走子。
@@ -68,14 +66,9 @@ class _BoardWidgetState extends ConsumerState<BoardWidget>
     Position to,
     Size size,
   ) {
-    final cell = _cellSize(size);
-    final originX = (size.width - cell * 8) / 2;
-    final originY = (size.height - cell * 9) / 2;
+    final layout = BoardLayout.fromSize(size);
 
-    Offset posOf(int col, int row) => Offset(
-          originX + col * cell,
-          originY + row * cell,
-        );
+    Offset posOf(int col, int row) => layout.offsetOf(col, row);
 
     final controller = AnimationController(
       vsync: this,
@@ -104,15 +97,6 @@ class _BoardWidgetState extends ConsumerState<BoardWidget>
       flying.controller.dispose();
       widget.onMoved?.call();
     });
-  }
-
-  double _cellSize(Size size) {
-    const padding = 24.0;
-    final innerWidth = size.width - padding * 2;
-    final innerHeight = size.height - padding * 2;
-    final cellW = innerWidth / 8;
-    final cellH = innerHeight / 9;
-    return cellW < cellH ? cellW : cellH;
   }
 
   @override
@@ -162,16 +146,10 @@ class _BoardWidgetState extends ConsumerState<BoardWidget>
     BoardState state,
     Board board,
   ) {
-    final cell = _cellSize(size);
-    final originX = (size.width - cell * 8) / 2;
-    final originY = (size.height - cell * 9) / 2;
+    final layout = BoardLayout.fromSize(size);
+    final radius = layout.pieceRadius;
 
-    Offset posOf(int col, int row) => Offset(
-          originX + col * cell,
-          originY + row * cell,
-        );
-
-    final radius = cell * 0.86 / 2;
+    Offset posOf(int col, int row) => layout.offsetOf(col, row);
     return IgnorePointer(
       child: AnimatedBuilder(
         animation: flying.animation,

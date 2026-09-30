@@ -1,0 +1,26 @@
+// Pikafish 引擎二进制文件占位符
+// 实际应用中需要下载并放置 Pikafish 预编译二进制文件
+// Windows 版本：pikafish.exe
+// Android 版本：libpikafish.so
+
+// 此文件仅为占位符，实际运行时需要替换为真实引擎文件
+// 引擎文件应放置在 assets/engines/ 目录下
+
+// 示例文件内容（空文件）
+// 真实文件需要从 Pikafish 官方仓库获取
+// https://github.com/official-pikafish/pikafish
+
+// Windows 版本：pikafish.exe
+// Android 版本：libpikafish.so
+
+// 引擎配置
+// UCI 协议支持
+// 支持多线程分析
+// 支持多种评估函数
+
+// 使用方法：
+// 1. 下载对应平台的 Pikafish 二进制文件
+// 2. 放置到 assets/engines/ 目录
+// 3. 在 EngineViewModel 中配置正确的路径
+
+// 注意：此文件仅为占位符，实际应用中需要替换为真实引擎文件

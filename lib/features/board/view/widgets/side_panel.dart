@@ -29,7 +29,7 @@ class SidePanel extends ConsumerWidget {
           children: [
             _TurnIndicator(state: state),
             const SizedBox(height: 12),
-            _ResultBanner(state: state),
+            ResultBanner(state: state),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -58,7 +58,7 @@ class SidePanel extends ConsumerWidget {
             Text('走法记录', style: theme.textTheme.titleSmall),
             const SizedBox(height: 6),
             Expanded(
-              child: _MoveList(state: state),
+              child: MoveRecordsList(state: state),
             ),
           ],
         ),
@@ -135,8 +135,11 @@ class _TurnIndicator extends StatelessWidget {
   }
 }
 
-class _ResultBanner extends StatelessWidget {
-  const _ResultBanner({required this.state});
+/// 对局结果横幅（公开组件，供各对弈页面复用）。
+///
+/// [state.result] 为 null 时不显示任何内容。
+class ResultBanner extends StatelessWidget {
+  const ResultBanner({super.key, required this.state});
 
   final BoardState state;
 
@@ -170,8 +173,9 @@ class _ResultBanner extends StatelessWidget {
   }
 }
 
-class _MoveList extends StatelessWidget {
-  const _MoveList({required this.state});
+/// 走法记录列表（公开组件，供各对弈页面复用）。
+class MoveRecordsList extends StatelessWidget {
+  const MoveRecordsList({super.key, required this.state});
 
   final BoardState state;
 

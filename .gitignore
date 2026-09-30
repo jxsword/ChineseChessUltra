@@ -39,3 +39,5 @@ windows/flutter/generated_plugins.cmake
 
 # other
 tmp/
+# Flutter ephemeral 构建产物（大小写以实际目录为准）
+windows/flutter/ephemeral/

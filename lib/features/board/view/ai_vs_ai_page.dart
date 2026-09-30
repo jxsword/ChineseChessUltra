@@ -1,12 +1,17 @@
+import 'dart:async';
+import 'dart:isolate';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../shared/engine/ai_engine.dart';
 import '../model/board_state.dart';
+import '../model/move.dart';
 import '../viewmodel/board_vm.dart';
 import '../view/widgets/board_widget.dart';
 import '../view/widgets/side_panel.dart';
 
-/// AI对战页面
+/// AI对战页面：红黑双方均由内置引擎驱动，棋盘实时反映每一步应手。
 class AiVsAiPage extends ConsumerStatefulWidget {
   const AiVsAiPage({super.key});
 
@@ -20,6 +25,30 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
   String _currentStatus = '等待开始';
   String _lastMove = '';
 
+  /// 双方 AI 难度（1-5，对应内置引擎搜索强度）。
+  int _redLevel = 3;
+  int _blackLevel = 3;
+
+  /// 走棋间隔（秒）。
+  int _intervalSeconds = 2;
+
+  /// 新对局结束后自动开始。
+  bool _autoStart = false;
+
+  /// 对局代数：暂停/停止/新游戏后自增，使过期的 AI 计算与延时续走作废。
+  int _seq = 0;
+
+  Timer? _nextMoveTimer;
+
+  static const _difficultyNames = {1: '初级', 2: '中级', 3: '高级', 4: '专家', 5: '大师'};
+
+  @override
+  void dispose() {
+    _seq++; // 作废仍在计算中的 AI 应手
+    _nextMoveTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -27,9 +56,9 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
         title: const Text('AI对战'),
         actions: [
           IconButton(
-            icon: Icon(_isRunning ? Icons.pause : Icons.play_arrow),
+            icon: Icon(_isRunning && !_isPaused ? Icons.pause : Icons.play_arrow),
             onPressed: _togglePlayPause,
-            tooltip: _isRunning ? '暂停' : '开始',
+            tooltip: _isRunning && !_isPaused ? '暂停' : '开始',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -91,7 +120,7 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
           child: SizedBox(
             width: size.width,
             height: size.height,
-            child: BoardWidget(onMoved: _onMoveFinished),
+            child: const BoardWidget(),
           ),
         );
       },
@@ -161,17 +190,18 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
         ),
         const SizedBox(height: 8),
         DropdownButton<int>(
-          value: 3,
-          items: const [
-            DropdownMenuItem(value: 1, child: Text('初级')),
-            DropdownMenuItem(value: 2, child: Text('中级')),
-            DropdownMenuItem(value: 3, child: Text('高级')),
-            DropdownMenuItem(value: 4, child: Text('专家')),
-            DropdownMenuItem(value: 5, child: Text('大师')),
+          value: _redLevel,
+          items: [
+            for (final level in _difficultyNames.keys)
+              DropdownMenuItem(value: level, child: Text(_difficultyNames[level]!)),
           ],
-          onChanged: (value) {
-            // TODO: 实现红方AI难度设置
-          },
+          onChanged: _isRunning
+              ? null
+              : (value) {
+                  if (value != null) {
+                    setState(() => _redLevel = value);
+                  }
+                },
         ),
         const SizedBox(height: 16),
         const Text(
@@ -184,17 +214,18 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
         ),
         const SizedBox(height: 8),
         DropdownButton<int>(
-          value: 3,
-          items: const [
-            DropdownMenuItem(value: 1, child: Text('初级')),
-            DropdownMenuItem(value: 2, child: Text('中级')),
-            DropdownMenuItem(value: 3, child: Text('高级')),
-            DropdownMenuItem(value: 4, child: Text('专家')),
-            DropdownMenuItem(value: 5, child: Text('大师')),
+          value: _blackLevel,
+          items: [
+            for (final level in _difficultyNames.keys)
+              DropdownMenuItem(value: level, child: Text(_difficultyNames[level]!)),
           ],
-          onChanged: (value) {
-            // TODO: 实现黑方AI难度设置
-          },
+          onChanged: _isRunning
+              ? null
+              : (value) {
+                  if (value != null) {
+                    setState(() => _blackLevel = value);
+                  }
+                },
         ),
       ],
     );
@@ -214,14 +245,14 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
         const SizedBox(height: 8),
         SwitchListTile(
           title: const Text('自动开始'),
-          value: true,
+          value: _autoStart,
           onChanged: (value) {
-            // TODO: 实现自动开始设置
+            setState(() => _autoStart = value);
           },
         ),
         SwitchListTile(
           title: const Text('显示思考过程'),
-          value: true,
+          value: false,
           onChanged: (value) {
             // TODO: 实现思考过程显示
           },
@@ -229,16 +260,20 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
         ListTile(
           title: const Text('走棋间隔'),
           trailing: DropdownButton<int>(
-            value: 2,
+            value: _intervalSeconds,
             items: const [
               DropdownMenuItem(value: 1, child: Text('1秒')),
               DropdownMenuItem(value: 2, child: Text('2秒')),
               DropdownMenuItem(value: 3, child: Text('3秒')),
               DropdownMenuItem(value: 5, child: Text('5秒')),
             ],
-            onChanged: (value) {
-              // TODO: 实现走棋间隔设置
-            },
+            onChanged: _isRunning
+                ? null
+                : (value) {
+                    if (value != null) {
+                      setState(() => _intervalSeconds = value);
+                    }
+                  },
           ),
         ),
       ],
@@ -251,7 +286,7 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
         ElevatedButton.icon(
           icon: const Icon(Icons.play_arrow),
           label: const Text('开始对战'),
-          onPressed: _startBattle,
+          onPressed: _isRunning ? null : _startBattle,
           style: ElevatedButton.styleFrom(
             minimumSize: const Size(double.infinity, 40),
             backgroundColor: Colors.green,
@@ -261,7 +296,7 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
         ElevatedButton.icon(
           icon: const Icon(Icons.pause),
           label: const Text('暂停'),
-          onPressed: _pauseBattle,
+          onPressed: (_isRunning && !_isPaused) ? _pauseBattle : null,
           style: ElevatedButton.styleFrom(
             minimumSize: const Size(double.infinity, 40),
             backgroundColor: Colors.orange,
@@ -271,7 +306,7 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
         ElevatedButton.icon(
           icon: const Icon(Icons.stop),
           label: const Text('停止'),
-          onPressed: _stopBattle,
+          onPressed: _isRunning ? _stopBattle : null,
           style: ElevatedButton.styleFrom(
             minimumSize: const Size(double.infinity, 40),
             backgroundColor: Colors.red,
@@ -291,6 +326,8 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
   }
 
   Widget _buildStatusPanel() {
+    final state = ref.watch(boardViewModelProvider);
+    final thinking = _isRunning && !_isPaused;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -302,10 +339,8 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
       child: Row(
         children: [
           Icon(
-            _isRunning
-                ? (IconData(0xe8f5, fontFamily: 'MaterialIcons'))
-                : Icons.check_circle,
-            color: _isRunning ? Colors.blue : Colors.green,
+            thinking ? Icons.hourglass_empty : Icons.check_circle,
+            color: thinking ? Colors.blue : Colors.green,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -315,7 +350,7 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
                 Text(
                   _currentStatus,
                   style: TextStyle(
-                    color: _isRunning ? Colors.blue : Colors.green,
+                    color: thinking ? Colors.blue : Colors.green,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -327,10 +362,19 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
                       color: Colors.grey,
                     ),
                   ),
+                if (state.isCheck && !state.isFinished)
+                  Text(
+                    '将军！',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red.shade700,
+                    ),
+                  ),
               ],
             ),
           ),
-          if (_isRunning)
+          if (thinking)
             const SizedBox(
               width: 20,
               height: 20,
@@ -344,18 +388,25 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // 对局控制
+  // ---------------------------------------------------------------------------
+
   void _startBattle() {
+    final viewModel = ref.read(boardViewModelProvider.notifier);
+    viewModel.lockInput(); // 对战期间禁止人工干预棋盘
+    _seq++;
     setState(() {
       _isRunning = true;
       _isPaused = false;
-      _currentStatus = '红方 AI 思考中...';
+      _currentStatus = 'AI 正在分析局面...';
     });
-
-    // 模拟AI思考时间
-    _simulateAiMove();
+    _runAiTurn();
   }
 
   void _pauseBattle() {
+    _seq++; // 作废挂起的续走与计算结果
+    _nextMoveTimer?.cancel();
     setState(() {
       _isPaused = true;
       _currentStatus = '已暂停';
@@ -363,15 +414,19 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
   }
 
   void _stopBattle() {
+    _seq++;
+    _nextMoveTimer?.cancel();
+    ref.read(boardViewModelProvider.notifier).unlockInput();
     setState(() {
       _isRunning = false;
       _isPaused = false;
       _currentStatus = '已停止';
-      _lastMove = '';
     });
   }
 
   void _newGame() {
+    _seq++;
+    _nextMoveTimer?.cancel();
     ref.read(boardViewModelProvider.notifier).newGame();
     setState(() {
       _isRunning = false;
@@ -379,51 +434,111 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
       _currentStatus = '等待开始';
       _lastMove = '';
     });
+    if (_autoStart) {
+      _startBattle();
+    }
   }
 
   void _togglePlayPause() {
-    if (_isRunning) {
+    if (_isRunning && !_isPaused) {
       _pauseBattle();
+    } else if (_isRunning && _isPaused) {
+      // 从暂停恢复：重开输入锁并继续走子循环。
+      ref.read(boardViewModelProvider.notifier).lockInput();
+      setState(() {
+        _isPaused = false;
+        _currentStatus = 'AI 正在分析局面...';
+      });
+      _runAiTurn();
     } else {
       _startBattle();
     }
   }
 
-  void _onMoveFinished() {
-    if (_isRunning && !_isPaused) {
-      // 继续下一步
-      _simulateAiMove();
+  /// 执行一个 AI 回合：在独立 Isolate 中计算当前走子方（由棋盘状态决定红/黑）
+  /// 的最佳应手，落子后按设定间隔调度下一回合。
+  Future<void> _runAiTurn() async {
+    if (!mounted) return;
+    final seq = _seq;
+
+    final viewModel = ref.read(boardViewModelProvider.notifier);
+    final state = ref.read(boardViewModelProvider);
+    if (state.isFinished) {
+      _finishWithResult();
+      return;
     }
-  }
-
-  void _simulateAiMove() {
-    if (!mounted || _isPaused) return;
-
-    // 模拟AI思考
+    final redTurn = state.isRedTurn;
     setState(() {
-      _currentStatus = 'AI 正在分析局面...';
+      _currentStatus = redTurn ? '红方 AI 思考中...' : '黑方 AI 思考中...';
     });
 
-    Future.delayed(const Duration(milliseconds: 1000), () {
-      if (!mounted || _isPaused) return;
+    // 必须在 await 前完成：棋盘快照与难度值要能被发送到 Isolate。
+    final boardSnapshot = viewModel.board.copy();
+    final level = redTurn ? _redLevel : _blackLevel;
 
-      // 模拟生成走法
-      final moves = ['h3e3', 'h9g7', 'c3e3', 'h10g8', 'a3a5', 'h10g8'];
-      final randomMove = moves[DateTime.now().millisecond % moves.length];
-      _lastMove = randomMove;
+    Move? bestMove;
+    try {
+      bestMove = await Isolate.run(
+        () => ChessAi.findBestMove(boardSnapshot, difficulty: level),
+      );
+    } on Object {
+      // Isolate 不可用时（极少数平台限制）退化为同步计算。
+      bestMove = ChessAi.findBestMove(boardSnapshot, difficulty: level);
+    }
 
-      // 判断当前是谁的回合
-      final isRedTurn = _lastMove.isNotEmpty;
+    if (!mounted || seq != _seq) return; // 页面已离开或已被暂停/停止/重开
+
+    // null 意味着当前方无合法走法（将死/困毙），结果由棋盘状态呈现。
+    if (bestMove == null) {
+      _finishWithResult();
+      return;
+    }
+
+    final applied = viewModel.playMove(bestMove.from, bestMove.to);
+    if (!applied) {
+      // 引擎给出的应手意外非法：终止对战，避免死循环。
+      _seq++;
+      ref.read(boardViewModelProvider.notifier).unlockInput();
       setState(() {
-        _currentStatus = isRedTurn ? '黑方 AI 思考中...' : '红方 AI 思考中...';
+        _isRunning = false;
+        _currentStatus = '对局异常终止';
       });
+      return;
+    }
 
-      // 继续下一步
-      if (_isRunning && !_isPaused) {
-        Future.delayed(const Duration(seconds: 2), () {
-          _simulateAiMove();
-        });
-      }
+    // 走法记录最后一手自带棋子信息，用于生成中文记法。
+    final lastMove = ref.read(boardViewModelProvider).moveHistory.last;
+    final notation = lastMove.chineseNotation(lastMove.piece!);
+    setState(() {
+      _lastMove = '${redTurn ? '红方' : '黑方'} $notation';
+    });
+
+    final newState = ref.read(boardViewModelProvider);
+    if (newState.isFinished) {
+      _finishWithResult();
+      return;
+    }
+
+    _nextMoveTimer = Timer(Duration(seconds: _intervalSeconds), () {
+      if (!mounted || seq != _seq) return;
+      _runAiTurn();
+    });
+  }
+
+  void _finishWithResult() {
+    _seq++;
+    _nextMoveTimer?.cancel();
+    ref.read(boardViewModelProvider.notifier).unlockInput();
+    final result = ref.read(boardViewModelProvider).result;
+    setState(() {
+      _isRunning = false;
+      _isPaused = false;
+      _currentStatus = switch (result) {
+        GameResult.redWins => '对局结束：红方获胜',
+        GameResult.blackWins => '对局结束：黑方获胜',
+        GameResult.draw => '对局结束：和棋',
+        null => '对局结束',
+      };
     });
   }
 }

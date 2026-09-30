@@ -2,6 +2,8 @@
 ///
 /// 表示一个已解析的残局棋谱，包含初始局面、破解走法、元数据等信息。
 
+import '../../board/model/move.dart';
+
 /// 解析后的残局棋谱数据。
 class ParsedPuzzle {
   /// 唯一标识符。
@@ -201,7 +203,7 @@ class PuzzleDemoParams {
   /// 创建演示参数。
   const PuzzleDemoParams({
     this.moveDuration = 600,
-    this.moveInterval = 400,
+    this.moveInterval = 800,
     this.autoPlay = false,
     this.loop = false,
     this.speedMultiplier = 1.0,
@@ -246,12 +248,24 @@ class PuzzleState {
   final String currentSide;
   final String? error;
 
+  /// 演示当前局面 FEN（演示未初始化时为 null）。
+  final String? fen;
+
+  /// 最近一步演示走法（用于棋盘高亮起止点）。
+  final Move? lastMove;
+
+  /// 当前演示参数（供速度下拉框回显）。
+  final PuzzleDemoParams demoParams;
+
   const PuzzleState({
     this.puzzle,
     this.demoState = PuzzleDemoState.idle,
     this.currentMoveIndex = 0,
     this.currentSide = 'red',
     this.error,
+    this.fen,
+    this.lastMove,
+    this.demoParams = PuzzleDemoParams.normal,
   });
 
   PuzzleState copyWith({

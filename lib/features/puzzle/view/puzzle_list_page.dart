@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 
+import 'dart:io';
+
 import '../model/puzzle_data.dart';
+import '../model/puzzle_parser.dart';
+import 'corpus_browser_page.dart';
 import 'puzzle_detail_page.dart';
 
 /// 残局选关列表页面
@@ -54,6 +58,11 @@ class _PuzzleListPageState extends ConsumerState<PuzzleListPage> {
       appBar: AppBar(
         title: const Text('残局选关'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.library_books),
+            onPressed: _openCorpusBrowser,
+            tooltip: '本地棋谱库',
+          ),
           IconButton(
             icon: const Icon(Icons.add),
             onPressed: _importPuzzle,
@@ -224,6 +233,13 @@ class _PuzzleListPageState extends ConsumerState<PuzzleListPage> {
     }
   }
 
+  void _openCorpusBrowser() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const CorpusBrowserPage()),
+    );
+  }
+
   void _onPuzzleSelected(ParsedPuzzle puzzle) {
     Navigator.push(
       context,
@@ -243,16 +259,28 @@ class _PuzzleListPageState extends ConsumerState<PuzzleListPage> {
 
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
-        // TODO: 实现实际的文件解析逻辑
+        final path = file.path;
+        if (path == null) throw Exception('无法读取所选文件路径');
+        final bytes = await File(path).readAsBytes();
+        final puzzles = PuzzleParser.parse(
+          fileName: file.name,
+          bytes: bytes,
+          source: '导入',
+        );
+        if (!mounted) return;
+        if (puzzles.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('文件中未找到可演示的棋局')),
+          );
+          return;
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已导入文件: ${file.name}'),
-            action: SnackBarAction(
-              label: '查看',
-              onPressed: () {
-                // TODO: 解析并显示导入的残局
-              },
-            ),
+          SnackBar(content: Text('已导入 ${puzzles.length} 局棋谱')),
+        );
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PuzzleDetailPage(puzzle: puzzles.first),
           ),
         );
       }

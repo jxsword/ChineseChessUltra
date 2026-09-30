@@ -50,6 +50,17 @@ class ParsedPuzzle {
   /// 残局步数。
   int get moveCount => solutionMoves?.length ?? 0;
 
+  /// 按总步数推算难度分档（XQF/PGN 棋谱本身没有难度字段）。
+  ///
+  /// ≤20 步入门(1)、21-40 初级(2)、41-80 中级(3)、81-150 高级(4)、>150 职业(5)。
+  static int difficultyFromMoveCount(int moveCount) {
+    if (moveCount <= 20) return 1;
+    if (moveCount <= 40) return 2;
+    if (moveCount <= 80) return 3;
+    if (moveCount <= 150) return 4;
+    return 5;
+  }
+
   /// 是否有破解走法。
   bool get hasSolution => solutionMoves != null && solutionMoves!.isNotEmpty;
 

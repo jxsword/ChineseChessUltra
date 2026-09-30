@@ -3,6 +3,7 @@ import 'dart:async';
 
 import '../../board/model/board.dart';
 import '../../board/model/move.dart';
+import '../model/iccs.dart';
 import '../model/puzzle_data.dart';
 
 /// 残局演示 ViewModel
@@ -26,9 +27,6 @@ class PuzzleViewModel extends Notifier<PuzzleState> {
 
   /// 最近一步演示走法（用于棋盘高亮）。
   Move? _lastMove;
-
-  /// ICCS 走法字符串（如 "h2e2"、"h10g8"）的解析模式。
-  static final RegExp _iccsPattern = RegExp(r'^([a-i])(\d{1,2})([a-i])(\d{1,2})$');
 
   @override
   PuzzleState build() {
@@ -185,30 +183,13 @@ class PuzzleViewModel extends Notifier<PuzzleState> {
     );
   }
 
-  /// 解析 ICCS 走法字符串为起止坐标。
+  /// 解析 ICCS 走法字符串为起止坐标（委托 [Iccs.parse]，保持原静态入口不变）。
   ///
   /// 坐标系：文件 a-i 对应列 0-8（红方视角从左到右），
   /// 行号 0-9（0 为红方底线、9 为黑方底线）；
   /// 兼容个别记谱把黑方底线写成 10 的情况。
-  static ({Position from, Position to})? parseIccs(String iccs) {
-    final match = _iccsPattern.firstMatch(iccs);
-    if (match == null) return null;
-
-    Position? parseSquare(String file, String rankStr) {
-      final rank = int.tryParse(rankStr);
-      if (rank == null || rank > 10) return null;
-      final col = file.codeUnitAt(0) - 'a'.codeUnitAt(0);
-      if (col < 0 || col > 8) return null;
-      final row = rank >= 10 ? 0 : 9 - rank;
-      if (row < 0 || row > 9) return null;
-      return Position(col, row);
-    }
-
-    final from = parseSquare(match.group(1)!, match.group(2)!);
-    final to = parseSquare(match.group(3)!, match.group(4)!);
-    if (from == null || to == null) return null;
-    return (from: from, to: to);
-  }
+  static ({Position from, Position to})? parseIccs(String iccs) =>
+      Iccs.parse(iccs);
 
   /// 完成演示
   void _completeDemo() {

@@ -47,6 +47,17 @@ class PuzzleParser {
     return _validateAndDedupe(parsed);
   }
 
+  /// 大文件导入阈值：超过此大小的多局 PGN 整读内存代价过高
+  /// （如 101MB 的 .pgns），应改走按局偏移索引的流式路径。
+  static const int streamImportThresholdBytes = 8 * 1024 * 1024;
+
+  /// 判断导入是否应走按局索引流式路径（仅多局 PGN 大文件）。
+  static bool shouldStreamImport(String fileName, int byteLength) {
+    final ext = fileName.toLowerCase().split('.').last;
+    return (ext == 'pgn' || ext == 'pgns') &&
+        byteLength > streamImportThresholdBytes;
+  }
+
   /// 逐局重放校验；非法着截断（至少保留 1 着，否则丢弃该局），并保证 id 唯一。
   static List<ParsedPuzzle> _validateAndDedupe(List<ParsedPuzzle> input) {
     final result = <ParsedPuzzle>[];

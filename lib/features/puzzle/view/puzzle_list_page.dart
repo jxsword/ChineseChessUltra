@@ -4,9 +4,11 @@ import 'package:file_picker/file_picker.dart';
 
 import 'dart:io';
 
+import '../model/corpus_scanner.dart';
 import '../model/puzzle_data.dart';
 import '../model/puzzle_parser.dart';
 import 'corpus_browser_page.dart';
+import 'corpus_pgn_browser_page.dart';
 import 'puzzle_detail_page.dart';
 
 /// 残局选关列表页面
@@ -253,7 +255,7 @@ class _PuzzleListPageState extends ConsumerState<PuzzleListPage> {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['xqf', 'pgn'],
+        allowedExtensions: ['xqf', 'pgn', 'pgns'],
         allowMultiple: false,
       );
 
@@ -261,6 +263,27 @@ class _PuzzleListPageState extends ConsumerState<PuzzleListPage> {
         final file = result.files.first;
         final path = file.path;
         if (path == null) throw Exception('无法读取所选文件路径');
+
+        // 超大多局 PGN 整读内存代价过高，改走按局索引的分页浏览。
+        if (PuzzleParser.shouldStreamImport(
+            file.name, File(path).lengthSync())) {
+          if (!mounted) return;
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CorpusPgnBrowserPage(
+                category: CorpusCategory(
+                  name: '导入 · ${file.name}',
+                  kind: CorpusKind.pgnFile,
+                  path: path,
+                  source: '导入',
+                ),
+              ),
+            ),
+          );
+          return;
+        }
+
         final bytes = await File(path).readAsBytes();
         final puzzles = PuzzleParser.parse(
           fileName: file.name,

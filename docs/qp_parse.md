@@ -126,3 +126,26 @@
 - 真实保存位置：`E:\ssy_proj\qp`（XQF-象棋谱大全 / ChessQ-gamebooks / CGLemon-PGN 三个子目录）。
 - 项目内通过目录联接访问：`mklink /J corpus E:\ssy_proj\qp`（已创建，`corpus`
   已加入 `.gitignore` 不入库）；联接缺失时棋谱库页面展示创建引导，测试自动 skip。
+
+## 审计结论与已知限制（2026-10-01 安全审计后）
+
+### 审计结论
+- Mimosa 深度扫描：findings 0、依赖风险 0（依赖检查 completion=partial，部分覆盖）。
+- 提交完整性：无受限文件入库（corpus 联接、.mimosa、.zcode/ 均已忽略），
+  无棋谱/大文件进入 git。
+
+### 已知限制（设计取舍，非缺陷）
+1. **corpus 联接是开发期特性**：相对路径依赖工作目录，Android 打包后无该目录，
+   棋谱库页面会显示创建引导；如需移动端可用，需改为绝对路径/资产化配置。
+2. **XQF 只取主线**：变着分支与注解未展示（残局演示场景够用）。
+3. **大文件导入阈值**：`.pgn/.pgns` 超过 8MB（`PuzzleParser.streamImportThresholdBytes`）
+   时导入改为按局索引 + 分页浏览（不整读内存）；阈值内仍整读解析。
+4. **源语料可能含坏局**：如《角包.xqf》主线第 171 着未解将；门面重放校验
+   截断并保留合法前缀。
+5. **assets 样本**：`sample_pgn.pgn`（99 着中文纵线）与 `sample_xqf.xqf`
+   （胡荣华对局，77 着）均为真实可解析棋谱，可作解析器联调用例。
+
+### 审计后修复记录
+- `app_test.dart`：首页已改为主导航页（二期），测试断言过时 → 已更新断言。
+- 超大 `.pgns` 导入整读内存 → 已改为阈值判定 + 按局索引流式路径。
+- `.zcode/` 加入 `.gitignore`；`sample_xqf.xqf` 占位文本替换为真实棋谱。

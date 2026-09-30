@@ -70,4 +70,17 @@ void main() {
       expect(puzzles[0].id != puzzles[1].id, isTrue);
     });
   });
+
+  group('大文件流式导入判定', () {
+    test('多局 PGN 大文件走流式路径，其余走整读', () {
+      const mb = 1024 * 1024;
+      expect(PuzzleParser.shouldStreamImport('合集.pgns', 9 * mb), isTrue);
+      expect(PuzzleParser.shouldStreamImport('对局.pgn', 9 * mb), isTrue);
+      expect(PuzzleParser.shouldStreamImport('合集.pgns', 8 * mb), isFalse,
+          reason: '等于阈值不流式');
+      expect(PuzzleParser.shouldStreamImport('对局.pgn', 1024), isFalse);
+      expect(PuzzleParser.shouldStreamImport('残局.xqf', 9 * mb), isFalse,
+          reason: 'XQF 单文件不大，始终整读');
+    });
+  });
 }

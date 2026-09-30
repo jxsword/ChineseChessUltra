@@ -6,7 +6,7 @@ import 'package:chinese_chess_ultra/features/storage/game_dao.dart';
 import 'package:chinese_chess_ultra/features/storage/repository.dart';
 
 void main() {
-  testWidgets('应用启动后显示标题与初始回合指示', (tester) async {
+  testWidgets('应用启动后显示标题与主导航入口', (tester) async {
     // 用内存 SQLite 替代文件数据库，避免测试环境依赖 path_provider。
     final dao = GameDao.inMemory();
     final repo = GameRepository(dao);
@@ -23,11 +23,11 @@ void main() {
 
     // 标题
     expect(find.text('中国象棋 Ultra'), findsOneWidget);
-    // 回合指示
-    expect(find.text('红方走棋'), findsOneWidget);
-    // 操作按钮
-    expect(find.text('悔棋'), findsOneWidget);
-    expect(find.text('新游戏'), findsOneWidget);
+    // 主导航入口（二期主导航页）
+    expect(find.text('残局选关'), findsOneWidget);
+    expect(find.text('人机对战'), findsOneWidget);
+    expect(find.text('机器对战'), findsOneWidget);
+    expect(find.text('双人对弈'), findsOneWidget);
 
     dao.dispose();
   });

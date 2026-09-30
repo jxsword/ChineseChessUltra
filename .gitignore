@@ -47,3 +47,6 @@ windows/flutter/ephemeral/
 
 # 本地棋谱语料目录联接（mklink /J corpus E:\ssy_proj\qp），不入库
 corpus
+
+# ZCode 会话本地文件
+.zcode/

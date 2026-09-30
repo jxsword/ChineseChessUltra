@@ -149,3 +149,24 @@
 - `app_test.dart`：首页已改为主导航页（二期），测试断言过时 → 已更新断言。
 - 超大 `.pgns` 导入整读内存 → 已改为阈值判定 + 按局索引流式路径。
 - `.zcode/` 加入 `.gitignore`；`sample_xqf.xqf` 占位文本替换为真实棋谱。
+
+## 功能扩展：残局始盘人机对战（2026-10-01）
+
+### 功能
+残局详情页（PuzzleDetailPage）新增"从残局始盘开始人机对战"入口
+（AppBar 图标 + 信息页按钮），以残局初始 FEN 进入人机对战：
+- 玩家执红、AI 执黑；轮走方由残局 FEN 决定，若开局轮黑则 AI 先行。
+- 页内"新游戏"重开回到残局始盘（而非标准开局），页面标题显示"残局人机对战"。
+- 对局胜负判定沿用现有 ResultBanner/BoardState.result。
+
+### 实现
+- `BoardViewModel.newGameFromFen(String fen)`：指定 FEN 开局，无效回退标准开局。
+- `HumanVsAiPage({initialFen})`：initState 延后至首帧（Riverpod 不允许构建期改
+  provider）后应用初始 FEN，并按需触发 AI 先行；`_newGame` 分支处理残局重开。
+- 测试：BoardViewModel 4 项单测（红先/黑先/无效回退/走子）+ HumanVsAiPage
+  3 项 widget 测试（开局、重开回残局、黑先 AI 先行）。
+
+### 已知取舍
+- 玩家固定执红；若残局的取胜方为黑，玩家只能执红体验（后续可加执子选择）。
+- BoardViewModel 为全局共享 provider，从残局进入对战会重置正在进行的棋局
+  （与"双人对弈/人机对战"入口互跳的既有行为一致）。

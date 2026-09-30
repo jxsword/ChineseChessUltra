@@ -14,8 +14,14 @@ import '../view/widgets/side_panel.dart';
 ///
 /// 玩家执红先行，AI 执黑。玩家走子完成后（[BoardWidget.onMoved] 回调），
 /// 在独立 Isolate 中用内置引擎计算应手并落到棋盘上。
+///
+/// 传入 [initialFen]（如残局闯关）时以该局面开局：轮走方由 FEN 决定，
+/// 若开局即轮到黑方，AI 会先行一步。
 class HumanVsAiPage extends ConsumerStatefulWidget {
-  const HumanVsAiPage({super.key});
+  const HumanVsAiPage({super.key, this.initialFen});
+
+  /// 可选的起始局面（默认为标准开局）。
+  final String? initialFen;
 
   @override
   ConsumerState<HumanVsAiPage> createState() => _HumanVsAiPageState();
@@ -33,10 +39,30 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
   static const _difficultyNames = {1: '初级', 2: '中级', 3: '高级', 4: '专家', 5: '大师'};
 
   @override
+  void initState() {
+    super.initState();
+    final initialFen = widget.initialFen;
+    if (initialFen != null) {
+      // Riverpod 不允许在 widget 树构建期间修改 provider，延后到首帧后。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final viewModel = ref.read(boardViewModelProvider.notifier);
+        viewModel.newGameFromFen(initialFen);
+        // 开局即轮到黑方（AI）：让 AI 先行。
+        final board = viewModel.board;
+        if (!board.isRedTurn &&
+            ref.read(boardViewModelProvider).result == null) {
+          _triggerAiMove();
+        }
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('人机对战'),
+        title: Text(widget.initialFen != null ? '残局人机对战' : '人机对战'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -277,7 +303,19 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
   void _newGame() {
     _gameSeq++; // 作废仍在计算中的 AI 应手
     final viewModel = ref.read(boardViewModelProvider.notifier);
-    viewModel.newGame();
+    final initialFen = widget.initialFen;
+    if (initialFen != null) {
+      // 残局闯关：重开仍回到残局起始局面。
+      viewModel.newGameFromFen(initialFen);
+      final board = viewModel.board;
+      if (!board.isRedTurn) {
+        setState(() => _isAiThinking = false);
+        _triggerAiMove();
+        return;
+      }
+    } else {
+      viewModel.newGame();
+    }
     setState(() => _isAiThinking = false);
   }
 

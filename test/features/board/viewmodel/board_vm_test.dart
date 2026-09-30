@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:chinese_chess_ultra/features/board/model/move.dart';
 import 'package:chinese_chess_ultra/features/board/viewmodel/board_vm.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -62,4 +63,47 @@ void main() {
       expect(state.isRedTurn, isTrue);
     });
   });
+
+    test('newGameFromFen：以残局 FEN 开局，轮走方随 FEN', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final vm = container.read(boardViewModelProvider.notifier);
+      const fen = '4k4/9/9/9/9/9/4C4/9/4C4/4K4 w - - 0 1';
+      vm.newGameFromFen(fen);
+      final state = container.read(boardViewModelProvider);
+      expect(state.fen, fen);
+      expect(state.isRedTurn, isTrue);
+      expect(state.moveHistory, isEmpty);
+      expect(state.result, isNull);
+    });
+
+    test('newGameFromFen：黑先 FEN 时轮走方为黑', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final vm = container.read(boardViewModelProvider.notifier);
+      vm.newGameFromFen('4k4/9/9/9/9/9/4C4/9/4C4/4K4 b - - 0 1');
+      expect(container.read(boardViewModelProvider).isRedTurn, isFalse);
+    });
+
+    test('newGameFromFen：无效 FEN 回退标准初始局面', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final vm = container.read(boardViewModelProvider.notifier);
+      vm.newGameFromFen('不是 FEN 的字符串');
+      final state = container.read(boardViewModelProvider);
+      expect(state.fen,
+          'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1');
+      expect(state.isRedTurn, isTrue);
+    });
+
+    test('newGameFromFen 后走子正常：红炮进一更新局面', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final vm = container.read(boardViewModelProvider.notifier);
+      vm.newGameFromFen('4k4/9/9/9/9/9/4C4/9/4C4/4K4 w - - 0 1');
+      final applied = vm.playMove(const Position(4, 6), const Position(4, 5));
+      expect(applied, isTrue);
+      expect(container.read(boardViewModelProvider).isRedTurn, isFalse);
+      expect(container.read(boardViewModelProvider).moveHistory, hasLength(1));
+    });
 }

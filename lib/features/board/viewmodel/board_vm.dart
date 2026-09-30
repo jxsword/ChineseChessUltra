@@ -293,6 +293,25 @@ class BoardViewModel extends Notifier<BoardState> {
     );
   }
 
+  /// 以指定 FEN 开始新对局（残局闯关等人机场景）。
+  ///
+  /// FEN 无效时回退为标准初始局面，避免崩溃。轮走方由 FEN 决定——
+  /// 若黑方先行，调用方应自行触发 AI 应手。
+  void newGameFromFen(String fen) {
+    _inputLocked = false;
+    try {
+      _board = Board.fromFen(fen);
+    } on Object {
+      _board = Board.initial();
+    }
+    _moveHistory = [];
+    state = _snapshot(
+      selected: null,
+      legalTargets: const [],
+      lastMove: null,
+    );
+  }
+
   /// 将当前局面状态序列化为可保存数据。
   ({String fen, List<Move> moves}) serialize() {
     return (fen: state.fen, moves: List.from(_moveHistory));

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../board/view/human_vs_ai_page.dart';
 import '../model/puzzle_data.dart';
 import '../viewmodel/puzzle_vm.dart';
 import 'widgets/demo_board_widget.dart';
@@ -39,6 +40,13 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.puzzle.title ?? '残局详情'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.sports_esports),
+            tooltip: '从残局始盘开始人机对战',
+            onPressed: _startPuzzleGame,
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
@@ -53,6 +61,16 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
           _buildPuzzleInfo(),
           _buildPuzzleDemo(),
         ],
+      ),
+    );
+  }
+
+  /// 以残局始盘为初始局面进入人机对战。
+  void _startPuzzleGame() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => HumanVsAiPage(initialFen: widget.puzzle.initialFen),
       ),
     );
   }
@@ -88,6 +106,12 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
                   _buildInfoRow('格式', widget.puzzle.format.toUpperCase()),
                   _buildInfoRow('难度', '${'★' * widget.puzzle.difficulty}${'☆' * (5 - widget.puzzle.difficulty)}'),
                   _buildInfoRow('走法数量', '${widget.puzzle.moveCount} 步'),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _startPuzzleGame,
+                    icon: const Icon(Icons.sports_esports),
+                    label: const Text('从残局始盘开始人机对战'),
+                  ),
                   if (widget.puzzle.description != null) ...[
                     const SizedBox(height: 16),
                     const Text(

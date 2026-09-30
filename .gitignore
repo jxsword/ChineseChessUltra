@@ -41,3 +41,6 @@ windows/flutter/generated_plugins.cmake
 tmp/
 # Flutter ephemeral 构建产物（大小写以实际目录为准）
 windows/flutter/ephemeral/
+
+# 本地工具缓存（Mimosa hook 状态）
+.mimosa/

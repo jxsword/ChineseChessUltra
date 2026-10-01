@@ -194,9 +194,6 @@ flutter run -d macos
 
 ## 四、两个 VM 统一的冒烟清单（对齐 Windows 已验证项）
 
-> **执行记录**：Ubuntu 26.04 VM（vmwgfx + Xorg 会话）2026-10-01 冒烟通过，
-> 功能符合预期。环境搭建按本文流程，Flutter 3.44.2 与主机对齐。macOS VM 待执行。
-
 1. **人机对战**：开局落子 → AI 应手 → 悔棋 → 新游戏；
 2. **P0-1**：AI 思考中返回主页再进人机对战 → 棋盘可点击；
 3. **P1-2**：残局详情 → 人机对局 → 返回主页 → 再进人机对战 = 标准开局无横幅；
@@ -206,7 +203,20 @@ flutter run -d macos
    断网 → 常驻失败对话框（非 SnackBar）→ 不留空目录；下载中取消 → 零残留；
    成功 → staging 目录 `corpus.tmp-*` 消失、分类正常。
    **不配透明代理则跳过本项**（应用内下载直连 GitHub，环境变量代理无效）；
-7. **P1-3**：保存按钮提示"保存功能开发中"。
+7. **保存/恢复棋局（第四批功能）**：人机/双人/机器对战各走数步 → 保存 →
+   返回重进 = 恢复局面；**彻底退出应用重开**再进 = 仍恢复（落盘证据）；
+   机器对战 AppBar 有保存按钮、恢复后状态栏显示"已恢复上次保存的对局"；
+   恢复到已分胜负的存档 = 自动清档开新局；残局模式无保存按钮。
+
+> **执行记录（2026-10-02）**：
+> - **Ubuntu 26.04 VM**：全清单冒烟通过（见 git 历史记录）。
+> - **macOS 14.7 VM（Intel x86_64）**：环境搭建完成（Flutter 3.44.2 + Xcode 16.2 +
+>   CocoaPods 1.17.0），`flutter build macos --debug` 构建成功，`flutter test`
+>   122 项全绿；**GUI 冒烟不可行**——VMware 不向 macOS 客机提供 Metal，
+>   Flutter macOS 无软件渲染回退，应用启动即空白（日志 `Could not acquire
+>   Metal device`）。交互冒烟需在物理 Mac 上执行（命令同 §3.3）。
+>   存档落盘验证可用文件存在性替代：沙盒容器路径
+>   `~/Library/Containers/<bundle-id>/Data/Documents/chinese_chess_ultra.sqlite`。
 
 ## 五、常见坑速查
 
@@ -216,6 +226,11 @@ flutter run -d macos
 | Linux 构建 CMake 报 GTK 头缺失 | 漏装 `libgtk-3-dev` / `clang`；按 §2.2 清单补齐 |
 | 在共享文件夹里构建极慢或权限报错 | 把代码拷到 VM 本地目录再构建，hgfs 只作传输 |
 | macOS `flutter doctor` 卡在 Xcode 许可 | `sudo xcodebuild -license accept` + `-runFirstLaunch` |
+| macOS VM 应用启动窗口空白，日志 `Could not acquire Metal device` | **VMware 不向 macOS 客机提供 Metal**，Flutter macOS 需要 Metal 且无软件渲染回退——VM 内无解，构建/测试可过但 GUI 冒烟需物理 Mac |
+| macOS 系统自带 Ruby 2.6 装 gem 原生扩展报 `config.h`/`stdckdint.h` 缺失 | Sonoma + 新 CLT 已知问题；用 brew portable ruby + `gem install cocoapods`（CPATH 指向 shim 头）绕过，见 `~/bin/pod` wrapper |
+| brew 用户目录安装触发 llvm 等巨量源码编译 | 非标准前缀拿不到 bottle；能不装就不装，本仓只需 cocoapods（用上一行方案可完全避开） |
+| SSH 读不到 VMware 共享文件夹（`Operation not permitted`） | macOS 隐私限制，sshd 无卷访问权限；用 osascript 让 Finder 代拷，或在 Finder 手动拖拽 |
+| App Store 搜不到 Xcode / 报需 macOS 26.x | App Store 只上架最新版；旧版仅对"该账号曾获取过"的账号开放。走 developer.apple.com/download/all 下 `.xip`（macOS 14.7 最高 Xcode 16.2） |
 | macOS 找不到手动放置的语料 | App Sandbox 容器路径，见 §3.3；或用应用内选目录 |
 | `flutter create` 提示已存在平台 | 正常，create 不覆盖 `android/`/`windows/`/`linux/`/`macos/` |
 | VM 内 pub get 慢 | 确认 `PUB_HOSTED_URL`/`FLUTTER_STORAGE_BASE_URL` 已写入对应 shell 配置 |

@@ -215,3 +215,4 @@ flutter run -d macos
 | macOS 找不到手动放置的语料 | App Sandbox 容器路径，见 §3.3；或用应用内选目录 |
 | `flutter create` 提示已存在平台 | 正常，create 不覆盖 `android/`/`windows/`/`linux/`/`macos/` |
 | VM 内 pub get 慢 | 确认 `PUB_HOSTED_URL`/`FLUTTER_STORAGE_BASE_URL` 已写入对应 shell 配置 |
+| 切宿主再切回后 Ubuntu 黑屏（SSH 仍可连） | vmwgfx + GNOME Wayland 已知问题：强制 Xorg——`/etc/gdm3/custom.conf` 设 `WaylandEnable=false` 后重启（验证 `echo $XDG_SESSION_TYPE` 输出 x11）；仍偶发则关机后取消 VM 显示设置的"加速 3D 图形" |

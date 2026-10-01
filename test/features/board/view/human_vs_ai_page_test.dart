@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:chinese_chess_ultra/features/board/model/board_state.dart';
+import 'package:chinese_chess_ultra/features/board/model/fen.dart';
 import 'package:chinese_chess_ultra/features/board/view/human_vs_ai_page.dart';
 import 'package:chinese_chess_ultra/features/board/model/piece.dart';
 import 'package:chinese_chess_ultra/features/board/viewmodel/board_vm.dart';
@@ -160,5 +161,81 @@ void main() {
 
     expect(captured.isRedTurn, isFalse, reason: 'AI（红方）先行后轮到黑方玩家');
     expect(captured.moveHistory, hasLength(1), reason: 'AI（红方）已先行一步');
+  });
+
+  testWidgets('人机对战：页面退出时兜底释放全局输入锁（P0-1）', (tester) async {
+    tester.view.physicalSize = const Size(1200, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: HumanVsAiPage(initialFen: puzzleFenRed)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 模拟 AI 思考中的锁状态（_triggerAiMove 已 lockInput、尚未 unlock 时
+    // 用户退出页面）。测试环境 Isolate 不可用走同步退化，无法制造真实
+    // 思考窗口，故直接注入锁状态验证 dispose 兜底。
+    container.read(boardViewModelProvider.notifier).lockInput();
+    // (4,6) 是红炮：未锁时可选中；锁定时点击被吞。
+    container.read(boardViewModelProvider.notifier).onTap(4, 6);
+    expect(container.read(boardViewModelProvider).selected, isNull,
+        reason: '锁定期内棋盘点击应被吞掉');
+
+    // 退出页面：dispose 必须兜底解锁，否则全局棋盘永久冻结。
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: SizedBox()),
+      ),
+    );
+    await tester.pump();
+
+    container.read(boardViewModelProvider.notifier).onTap(4, 6);
+    expect(container.read(boardViewModelProvider).selected, isNotNull,
+        reason: '页面退出后全局输入锁必须已释放');
+  });
+
+  testWidgets('人机对战：残局对局后无参进入应重置为标准开局（P1-2）', (tester) async {
+    tester.view.physicalSize = const Size(1200, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    // 先进入残局对局（写入全局残局局面）。
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: HumanVsAiPage(initialFen: puzzleFenRed)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(container.read(boardViewModelProvider).fen, puzzleFenRed);
+
+    // 返回主页后再无参进入人机对战：必须重置为标准开局。
+    // UniqueKey 强制新建 State（模拟真实导航进入新 route），
+    // 否则 Flutter 复用旧 State、initState 不重跑。
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: HumanVsAiPage(key: UniqueKey()),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final state = container.read(boardViewModelProvider);
+    expect(state.fen, Fen.initial, reason: '不应残留残局局面');
+    expect(state.result, isNull, reason: '不应残留胜负横幅');
+    expect(state.moveHistory, isEmpty);
   });
 }

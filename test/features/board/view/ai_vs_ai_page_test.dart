@@ -60,4 +60,44 @@ void main() {
     await tester.tap(find.byTooltip('暂停'));
     await tester.pump();
   });
+
+  testWidgets('AI对战：运行中退出页面，全局输入锁必须被释放（P0-1）', (tester) async {
+    tester.view.physicalSize = const Size(1200, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: AiVsAiPage()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // 开始对战（应用栏播放按钮，避免侧栏按钮在测试视口被遮挡）→ lockInput。
+    await tester.tap(find.byTooltip('开始'));
+    await tester.pump();
+    // AI（红方）已先行一步，轮到黑方；锁定时点黑车 (0,0) 应被吞。
+    container.read(boardViewModelProvider.notifier).onTap(0, 0);
+    expect(container.read(boardViewModelProvider).selected, isNull,
+        reason: '对战期间输入应被锁定');
+
+    // 运行态直接退出页面（AI isolate 仍在计算）。
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: SizedBox()),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 800)),
+    );
+
+    container.read(boardViewModelProvider.notifier).onTap(0, 0);
+    expect(container.read(boardViewModelProvider).selected, isNotNull,
+        reason: '运行态退出页面必须解锁全局输入');
+  });
 }

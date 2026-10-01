@@ -137,3 +137,51 @@ jobs:
           name: android-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 7
+
+  release:
+    # 全平台构建通过后自动发布 Release（仅 main 分支推送触发）
+    needs: [macos, windows, linux, android]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 读取版本号（pubspec.yaml）
+        id: ver
+        run: echo "version=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d+ -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: 下载全平台产物
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 打包发布物
+        run: |
+          cd artifacts
+          zip -qr ../chinese_chess_ultra-macos.zip macos-debug-app
+          zip -qr ../chinese_chess_ultra-windows-x64.zip windows-debug-app
+          zip -qr ../chinese_chess_ultra-linux-x64.zip linux-debug-bundle
+          mv android-debug-apk/app-debug.apk ../chinese_chess_ultra-android-debug.apk
+
+      - name: 发布 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.ver.outputs.version }}+build.${{ github.run_number }}
+        run: |
+          NOTES="自动发布：main 分支推送 \`${{ github.sha }}\` CI 全平台构建通过。
+
+          **产物清单（均为 debug 构建）**
+          - \`chinese_chess_ultra-android-debug.apk\` — Android 安装包（debug 签名）
+          - \`chinese_chess_ultra-macos.zip\` — macOS .app（Apple Silicon）
+          - \`chinese_chess_ultra-windows-x64.zip\` — Windows x64（解压后运行 exe）
+          - \`chinese_chess_ultra-linux-x64.zip\` — Linux x64 bundle"
+          gh release create "$TAG" \
+            --title "中国象棋 Ultra v${{ steps.ver.outputs.version }} (build ${{ github.run_number }})" \
+            --notes "$NOTES" \
+            --generate-notes \
+            chinese_chess_ultra-macos.zip \
+            chinese_chess_ultra-windows-x64.zip \
+            chinese_chess_ultra-linux-x64.zip \
+            chinese_chess_ultra-android-debug.apk

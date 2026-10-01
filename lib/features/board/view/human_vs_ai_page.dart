@@ -6,22 +6,31 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/engine/ai_engine.dart';
 import '../model/board_state.dart';
 import '../model/move.dart';
+import '../model/piece.dart';
 import '../viewmodel/board_vm.dart';
 import '../view/widgets/board_widget.dart';
 import '../view/widgets/side_panel.dart';
 
 /// 人机对战页面。
 ///
-/// 玩家执红先行，AI 执黑。玩家走子完成后（[BoardWidget.onMoved] 回调），
-/// 在独立 Isolate 中用内置引擎计算应手并落到棋盘上。
+/// 玩家执 [playerSide]（默认红方），AI 执对方棋子。玩家走子完成后
+/// （[BoardWidget.onMoved] 回调），在独立 Isolate 中用内置引擎计算应手
+/// 并落到棋盘上。
 ///
 /// 传入 [initialFen]（如残局闯关）时以该局面开局：轮走方由 FEN 决定，
-/// 若开局即轮到黑方，AI 会先行一步。
+/// 若开局即轮到 AI，AI 会先行一步。玩家获胜/失败时（残局模式）弹通关提示。
 class HumanVsAiPage extends ConsumerStatefulWidget {
-  const HumanVsAiPage({super.key, this.initialFen});
+  const HumanVsAiPage({
+    super.key,
+    this.initialFen,
+    this.playerSide = Side.red,
+  });
 
   /// 可选的起始局面（默认为标准开局）。
   final String? initialFen;
+
+  /// 玩家执子方（默认红方）。
+  final Side playerSide;
 
   @override
   ConsumerState<HumanVsAiPage> createState() => _HumanVsAiPageState();
@@ -36,7 +45,25 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
   /// 对局代数：新游戏/悔棋后自增，使过期的 AI 计算结果作废。
   int _gameSeq = 0;
 
+  /// 残局模式结果弹窗是否已展示（防重入）。
+  bool _resultDialogShown = false;
+
   static const _difficultyNames = {1: '初级', 2: '中级', 3: '高级', 4: '专家', 5: '大师'};
+
+  /// 玩家执子方。
+  Side get _playerSide => widget.playerSide;
+
+  /// AI 执子方。
+  Side get _aiSide => _playerSide.opponent;
+
+  String get _playerSideName => _playerSide == Side.red ? '红' : '黑';
+  String get _aiSideName => _aiSide == Side.red ? '红' : '黑';
+
+  /// 当前是否轮到 AI 走子。
+  bool _isAiTurn() {
+    final isRedTurn = ref.read(boardViewModelProvider.notifier).board.isRedTurn;
+    return (_aiSide == Side.red) == isRedTurn;
+  }
 
   @override
   void initState() {
@@ -46,12 +73,9 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
       // Riverpod 不允许在 widget 树构建期间修改 provider，延后到首帧后。
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        final viewModel = ref.read(boardViewModelProvider.notifier);
-        viewModel.newGameFromFen(initialFen);
-        // 开局即轮到黑方（AI）：让 AI 先行。
-        final board = viewModel.board;
-        if (!board.isRedTurn &&
-            ref.read(boardViewModelProvider).result == null) {
+        ref.read(boardViewModelProvider.notifier).newGameFromFen(initialFen);
+        // 开局即轮到 AI：让 AI 先行。
+        if (_isAiTurn() && ref.read(boardViewModelProvider).result == null) {
           _triggerAiMove();
         }
       });
@@ -60,9 +84,22 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 残局模式：胜负揭晓时弹通关 / 惜败提示。
+    if (widget.initialFen != null) {
+      ref.listen<BoardState>(boardViewModelProvider, (prev, next) {
+        if (prev?.result != null || next.result == null) return;
+        if (_resultDialogShown) return;
+        _resultDialogShown = true;
+        final playerWon =
+            (next.result == GameResult.redWins) == (_playerSide == Side.red);
+        _showPuzzleResultDialog(playerWon);
+      });
+    }
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.initialFen != null ? '残局人机对战' : '人机对战'),
+        title: Text(widget.initialFen != null
+            ? '残局人机对战（玩家执$_playerSideName方）'
+            : '人机对战'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -256,10 +293,11 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
       text = 'AI 正在思考...';
       color = Colors.orange;
     } else if (state.isCheck) {
-      text = state.isRedTurn ? '等待玩家走棋（红方被将军！）' : '等待玩家走棋';
+      final checkedSide = state.isRedTurn ? '红' : '黑';
+      text = '等待玩家（$_playerSideName方）走棋（$checkedSide方被将军！）';
       color = Colors.red;
     } else {
-      text = '等待玩家走棋';
+      text = '等待玩家（$_playerSideName方）走棋';
       color = Colors.green;
     }
 
@@ -300,28 +338,65 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
   // 对局控制
   // ---------------------------------------------------------------------------
 
+  /// 残局模式：对局结束后弹通关 / 惜败提示。
+  void _showPuzzleResultDialog(bool playerWon) {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(
+          playerWon ? Icons.emoji_events : Icons.sentiment_dissatisfied,
+          size: 48,
+          color: playerWon ? Colors.amber : Colors.grey,
+        ),
+        title: Text(playerWon ? '残局闯关成功！' : '闯关失败'),
+        content: Text(playerWon
+            ? '恭喜你执$_playerSideName方取得胜利，可再来一局或返回残局。'
+            : '再接再厉，可以重试或换一种攻杀思路。'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _newGame();
+            },
+            child: Text(playerWon ? '再来一局' : '重试'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              Navigator.of(context).pop(); // 返回残局详情页
+            },
+            child: const Text('返回'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _newGame() {
     _gameSeq++; // 作废仍在计算中的 AI 应手
+    _resultDialogShown = false;
     final viewModel = ref.read(boardViewModelProvider.notifier);
     final initialFen = widget.initialFen;
     if (initialFen != null) {
       // 残局闯关：重开仍回到残局起始局面。
       viewModel.newGameFromFen(initialFen);
-      final board = viewModel.board;
-      if (!board.isRedTurn) {
-        setState(() => _isAiThinking = false);
-        _triggerAiMove();
-        return;
-      }
     } else {
       viewModel.newGame();
+    }
+    if (_isAiTurn()) {
+      // 开局即轮到 AI（如黑先残局 / 玩家执黑）：AI 先行。
+      setState(() => _isAiThinking = false);
+      _triggerAiMove();
+      return;
     }
     setState(() => _isAiThinking = false);
   }
 
   void _undoMove() {
     _gameSeq++; // 作废仍在计算中的 AI 应手（防御性，正常悔棋时 AI 不在思考）
-    ref.read(boardViewModelProvider.notifier).undoRound();
+    ref.read(boardViewModelProvider.notifier).undoRound(playerSide: _playerSide);
   }
 
   void _saveGame() {
@@ -334,7 +409,7 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
     );
   }
 
-  /// 玩家走子完成后的回调：对局未结束则轮到 AI（黑方）应手。
+  /// 玩家走子完成后的回调：对局未结束则轮到 AI 应手。
   void _onMoveFinished() {
     final state = ref.read(boardViewModelProvider);
     if (state.result != null) return;

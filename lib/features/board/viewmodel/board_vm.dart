@@ -252,13 +252,23 @@ class BoardViewModel extends Notifier<BoardState> {
   /// 悔一整轮（人机模式）：同时撤销 AI 的应手与玩家最近一手。
   ///
   /// 若历史中只有玩家的走子，则只撤销那一手。
-  void undoRound() {
+  /// 悔一整轮（撤销 AI 与玩家各一手；默认按红方玩家语义）。
+  ///
+  /// [playerSide] 为执子方。与走子顺序无关：最后若为 AI 一手则先撤，
+  /// 再撤玩家一手；玩家一手之前若还有 AI 一手（AI 先行开局轮）一并撤销。
+  void undoRound({Side playerSide = Side.red}) {
     if (_inputLocked || _moveHistory.isEmpty) return;
-    if (_moveHistory.last.piece?.side == Side.black) {
+    final aiSide = playerSide.opponent;
+    if (_moveHistory.last.piece?.side == aiSide) {
       _undoOnce();
     }
-    if (_moveHistory.isNotEmpty && _moveHistory.last.piece?.side == Side.red) {
+    if (_moveHistory.isNotEmpty &&
+        _moveHistory.last.piece?.side == playerSide) {
       _undoOnce();
+      if (_moveHistory.isNotEmpty &&
+          _moveHistory.last.piece?.side == aiSide) {
+        _undoOnce();
+      }
     }
   }
 

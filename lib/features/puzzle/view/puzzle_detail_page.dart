@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../board/model/piece.dart';
 import '../../board/view/human_vs_ai_page.dart';
 import '../model/puzzle_data.dart';
 import '../viewmodel/puzzle_vm.dart';
@@ -65,14 +66,52 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
     );
   }
 
-  /// 以残局始盘为初始局面进入人机对战。
+  /// 以残局始盘为初始局面进入人机对战：先让玩家选择执子方。
   void _startPuzzleGame() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => HumanVsAiPage(initialFen: widget.puzzle.initialFen),
+    showModalBottomSheet<Side>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                '选择执子方',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.circle, color: Colors.red),
+              title: const Text('执红先行'),
+              subtitle: const Text('红方先走（多数残局的攻杀方）'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(sheetContext).pop(Side.red),
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.circle_outlined, color: Colors.black87),
+              title: const Text('执黑后行'),
+              subtitle: const Text('黑方后走，由 AI 先行动子'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(sheetContext).pop(Side.black),
+            ),
+          ],
+        ),
       ),
-    );
+    ).then((side) {
+      if (side is! Side) return;
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => HumanVsAiPage(
+            initialFen: widget.puzzle.initialFen,
+            playerSide: side,
+          ),
+        ),
+      );
+    });
   }
 
   Widget _buildPuzzleInfo() {

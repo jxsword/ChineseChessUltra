@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chinese_chess_ultra/features/board/model/move.dart';
+import 'package:chinese_chess_ultra/features/board/model/piece.dart';
 import 'package:chinese_chess_ultra/features/board/viewmodel/board_vm.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -105,5 +106,23 @@ void main() {
       expect(applied, isTrue);
       expect(container.read(boardViewModelProvider).isRedTurn, isFalse);
       expect(container.read(boardViewModelProvider).moveHistory, hasLength(1));
+    });
+
+    test('undoRound：黑方玩家语义（先撤红方 AI 一手，再撤黑方玩家一手）', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final vm = container.read(boardViewModelProvider.notifier);
+      // 红先残局：AI(红)先行 1 着，黑方玩家应手 1 着。
+      vm.newGameFromFen('4k4/9/9/9/9/9/4C4/9/4C4/4K4 w - - 0 1');
+      final aiApplied = vm.playMove(const Position(4, 9), const Position(5, 9));
+      expect(aiApplied, isTrue, reason: '红帅 e0→f0 合法');
+      final playerApplied =
+          vm.playMove(const Position(4, 0), const Position(3, 0));
+      expect(playerApplied, isTrue, reason: '黑将 e9→d9 合法（离开红炮纵线）');
+      expect(container.read(boardViewModelProvider).moveHistory, hasLength(2));
+      vm.undoRound(playerSide: Side.black);
+      // 一轮 = 撤黑方玩家 + 撤红方 AI 各一手。
+      expect(container.read(boardViewModelProvider).moveHistory, isEmpty);
+      expect(container.read(boardViewModelProvider).isRedTurn, isTrue);
     });
 }

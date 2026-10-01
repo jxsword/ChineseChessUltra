@@ -262,3 +262,16 @@
 
 ### 待办
 - Android 真机/模拟器验证下载-解压-扫描全链路。
+
+### 语料源发布记录（2026-10-01 已完成）
+- 语料仓库：`jxsword/qp-corpus`（公开），12,660 个文件 / 199MB，含过滤
+  （已剔除 ChessQ 应用源码与 .eglib/.eplib 私有书格式、xqp 代码文件；
+  说明性 txt/doc 与 .CBL 合集保留）。
+- Release `v1`：附件 `qp-corpus.zip`（45.8MB，UTF-8 文件名打包，Python zipfile）。
+- 已验证：`releases/latest/download/qp-corpus.zip` 匿名可达（302）、完整下载
+  12,660 条目、中文路径与 XQ 魔数抽验通过、pgns 字节数与源一致、
+  抽样 XQF 经 cchess 解析成功——`CorpusPaths.downloadUrl` 可直接使用。
+- 运维约定：单文件 >100MiB 只进 Release 不进 git；大版本更新后可 squash
+  重建仓库控制体积；更新语料 = qp 目录 push + 重发 Release（URL 不变）。
+- 注意：本机 GH_TOKEN 已轮换（setx 写入用户环境变量），重启 ZCode 后新会话
+  自动生效；旧 fine-grained token 建议在 GitHub 上撤销。

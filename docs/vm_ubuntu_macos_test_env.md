@@ -52,7 +52,7 @@
 | 项 | 建议值 |
 |----|--------|
 | 宿主 | VMware Workstation Pro/Player 17+（Windows） |
-| 客户机 | Ubuntu 22.04 / 24.04 LTS Desktop（x86_64） |
+| 客户机 | Ubuntu 22.04 / 24.04 / 26.04 LTS Desktop（x86_64） |
 | CPU / 内存 | 4 vCPU / 8 GB（GTK 构建吃内存） |
 | 磁盘 | 60 GB（SDK + 构建 + 语料 245MB） |
 | 网络 | NAT（默认 VMnet8）即可 |
@@ -65,9 +65,12 @@ sudo apt-get update
 sudo apt-get install -y open-vm-tools open-vm-tools-desktop
 
 # Flutter Linux 桌面官方依赖（clang 必须，gcc 不行）
-sudo apt-get install -y clang cmake ninja-build pkg-config \
-    libgtk-3-dev liblzma-dev libstdc++-12-dev
-# Ubuntu 24.04 若提示 libstdc++-12-dev 无候选，改 libstdc++-14-dev
+# libstdc++ 开发包不写死版本：build-essential 会带上当前系统的
+# libstdc++-<N>-dev（22.04 是 12，24.04 是 14，26.04 是 14/15），避免包名失配
+sudo apt-get install -y build-essential clang cmake ninja-build pkg-config \
+    libgtk-3-dev liblzma-dev
+# 注：Ubuntu 26.04 桌面默认 Wayland 会话。Flutter Linux 嵌入层是 GTK3/X11，
+# 经 XWayland 运行通常无碍；若窗口/输入异常，登录界面切 "Ubuntu on Xorg" 会话。
 ```
 
 ### 2.3 Flutter SDK（国内镜像）

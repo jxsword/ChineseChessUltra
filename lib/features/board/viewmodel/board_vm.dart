@@ -94,7 +94,9 @@ class BoardViewModel extends Notifier<BoardState> {
     if (_board.isCheckmate(turn)) {
       result = turn.isRed ? GameResult.blackWins : GameResult.redWins;
     } else if (_board.isStalemate(turn)) {
-      result = GameResult.draw;
+      // 中国象棋规则：困毙（无子可动且未被将军）判困毙方负，不存在逼和。
+      // 与引擎 ai_engine.dart 的 -mateScore 计分语义一致。
+      result = turn.isRed ? GameResult.blackWins : GameResult.redWins;
     }
     return BoardState(
       fen: _board.toFen(),

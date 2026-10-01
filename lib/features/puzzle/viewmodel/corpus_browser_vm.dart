@@ -3,6 +3,7 @@
 /// 职责：扫描 corpus 语料分类、按分类懒解析 XQF 文件（分批 + 进度）、
 /// 提供搜索 / 难度筛选 / 排序。PGN 大文件分类由页面层跳转到
 /// [PgnFileBrowserPage] 处理。
+library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -170,14 +171,26 @@ class CorpusBrowserViewModel extends Notifier<CorpusBrowserState> {
       return;
     }
     final categories = repo.scanCategories();
+    if (categories.isEmpty) {
+      // 目录存在但为空（下载失败残留半成品目录等）：视同缺失，
+      // 回到下载引导，避免"请选择分类"死胡同。
+      state = state.copyWith(
+        corpusExists: false,
+        corpusPath: dir.path,
+        categories: const [],
+        clearSelectedCategory: true,
+        entries: const [],
+        puzzles: const [],
+        clearProgress: true,
+      );
+      return;
+    }
     state = state.copyWith(
       corpusExists: true,
       corpusPath: dir.path,
       categories: categories,
     );
-    if (categories.isNotEmpty) {
-      await selectCategory(0);
-    }
+    await selectCategory(0);
   }
 
   /// 桌面端：选择自定义棋谱目录并持久化，然后重新加载。
@@ -238,7 +251,7 @@ class CorpusBrowserViewModel extends Notifier<CorpusBrowserState> {
       state = state.copyWith(onlyEndgame: value);
 
   void setDifficultyFilter(int? difficulty) => state = state.copyWith(
-      difficultyFilter: difficulty, clearDifficultyFilter: difficulty == null);
+      difficultyFilter: difficulty, clearDifficultyFilter: difficulty == null,);
 
   void setSortMode(CorpusSortMode mode) =>
       state = state.copyWith(sortMode: mode);

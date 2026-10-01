@@ -424,12 +424,9 @@ class _HumanVsHumanGamePageState extends ConsumerState<HumanVsHumanGamePage> {
   }
 
   void _saveGame() {
-    // TODO: 实现保存棋局功能
+    // TODO: 实现保存棋局功能（接通 sqlite 链路后再改回成功提示）。
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('棋局已保存'),
-        backgroundColor: Colors.green,
-      ),
+      const SnackBar(content: Text('保存功能开发中')),
     );
   }
 

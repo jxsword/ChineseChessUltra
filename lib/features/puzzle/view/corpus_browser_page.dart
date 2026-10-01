@@ -2,6 +2,7 @@
 ///
 /// 一级为分类（XQF 子目录 / PGN 大文件），二级为棋局列表，
 /// 支持搜索、难度筛选与按步数/难度排序；点开棋局进入演示页。
+library;
 
 import 'dart:io';
 
@@ -25,7 +26,8 @@ class CorpusBrowserPage extends ConsumerStatefulWidget {
 }
 
 class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
-  String _downloadStatus = '正在下载语料包…';
+  /// 下载取消标志（进度框"取消"按钮置位，下载器各阶段间轮询）。
+  bool _downloadCancelled = false;
 
   @override
   void initState() {
@@ -96,8 +98,7 @@ class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
                     .read(corpusBrowserProvider.notifier)
                     .selectCategory(index);
                 if (!mounted) return;
-                Navigator.push(
-                  context,
+                Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => CorpusPgnBrowserPage(category: category),
                   ),
@@ -157,9 +158,9 @@ class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
             items: const [
               DropdownMenuItem(value: CorpusSortMode.name, child: Text('按名称')),
               DropdownMenuItem(
-                  value: CorpusSortMode.moves, child: Text('按步数')),
+                  value: CorpusSortMode.moves, child: Text('按步数'),),
               DropdownMenuItem(
-                  value: CorpusSortMode.difficulty, child: Text('按难度')),
+                  value: CorpusSortMode.difficulty, child: Text('按难度'),),
             ],
             onChanged: (v) {
               if (v != null) {
@@ -191,10 +192,15 @@ class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
     );
   }
 
-  /// 下载语料包并解压到当前语料目录，带进度对话框。
+  /// 下载语料包并解压到当前语料目录，带可取消进度对话框。
+  ///
+  /// 失败时用常驻对话框展示原因并提供"重试"入口（SnackBar 一闪而过
+  /// 会引导用户走向空目录死胡同）。
   Future<void> _downloadCorpus() async {
     final targetPath = ref.read(corpusBrowserProvider).corpusPath;
     if (targetPath == null) return;
+    _downloadCancelled = false;
+    final status = ValueNotifier<String>('正在下载语料包…');
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -206,14 +212,25 @@ class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
             children: [
               const CircularProgressIndicator(),
               const SizedBox(height: 16),
-              Text(_downloadStatus),
+              ValueListenableBuilder<String>(
+                valueListenable: status,
+                builder: (_, text, __) => Text(text),
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () {
+                  _downloadCancelled = true;
+                  status.value = '正在取消…';
+                },
+                child: const Text('取消'),
+              ),
             ],
           ),
         ),
       ),
     );
     try {
-      await CorpusDownloader.downloadAndExtract(
+      final result = await CorpusDownloader.downloadAndExtract(
         url: CorpusPaths.downloadUrl,
         targetDir: Directory(targetPath),
         onProgress: (received, total) {
@@ -223,24 +240,63 @@ class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
                   '${(total / 1024 / 1024).toStringAsFixed(1)} MB'
               : '正在下载语料包… '
                   '${(received / 1024 / 1024).toStringAsFixed(1)} MB';
-          if (_downloadStatus != text && mounted) {
-            setState(() => _downloadStatus = text);
-          }
+          if (status.value != text) status.value = text;
         },
+        isCancelled: () => _downloadCancelled,
       );
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop(); // 关进度框
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('棋谱下载完成'), backgroundColor: Colors.green),
+        SnackBar(
+          content: Text(result.skipped > 0
+              ? '棋谱下载完成（${result.extracted} 个文件，'
+                  '跳过 ${result.skipped} 个异常条目）'
+              : '棋谱下载完成',),
+          backgroundColor: Colors.green,
+        ),
       );
       await ref.read(corpusBrowserProvider.notifier).load();
+    } on CorpusDownloadCancelled {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // 关进度框
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已取消下载')),
+      );
     } on Object catch (e) {
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop(); // 关进度框
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('下载失败: $e'), backgroundColor: Colors.red),
-      );
+      _showDownloadFailureDialog(e);
     }
+  }
+
+  /// 常驻失败对话框：含失败原因与重试入口。
+  void _showDownloadFailureDialog(Object error) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.error_outline, color: Colors.red, size: 40),
+        title: const Text('语料下载失败'),
+        content: Text(
+          '$error\n\n请检查网络或代理设置后重试。',
+          style: const TextStyle(fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('关闭'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              _downloadCorpus(); // 重试
+            },
+            icon: const Icon(Icons.refresh),
+            label: const Text('重试'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// 桌面端：选择自定义棋谱目录。
@@ -301,7 +357,7 @@ class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
     };
     return CircleAvatar(
       radius: 14,
-      backgroundColor: color.withOpacity(0.15),
+      backgroundColor: color.withValues(alpha: 0.15),
       child: Text(
         '$difficulty',
         style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13),
@@ -347,7 +403,7 @@ class _CorpusMissingGuide extends StatelessWidget {
             FilledButton.icon(
               onPressed: onDownload,
               icon: const Icon(Icons.download),
-              label: const Text('下载棋谱库（约 150MB）'),
+              label: const Text('下载棋谱库（约 45MB，解压后约 245MB）'),
             ),
             if (isDesktop) ...[
               const SizedBox(height: 8),

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:chinese_chess_ultra/features/board/model/board_state.dart';
 import 'package:chinese_chess_ultra/features/board/model/move.dart';
 import 'package:chinese_chess_ultra/features/board/model/piece.dart';
 import 'package:chinese_chess_ultra/features/board/viewmodel/board_vm.dart';
@@ -93,7 +94,7 @@ void main() {
       vm.newGameFromFen('不是 FEN 的字符串');
       final state = container.read(boardViewModelProvider);
       expect(state.fen,
-          'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1');
+          'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1',);
       expect(state.isRedTurn, isTrue);
     });
 
@@ -124,5 +125,26 @@ void main() {
       // 一轮 = 撤黑方玩家 + 撤红方 AI 各一手。
       expect(container.read(boardViewModelProvider).moveHistory, isEmpty);
       expect(container.read(boardViewModelProvider).isRedTurn, isTrue);
+    });
+
+    test('困毙判负：黑方无子可动且未被将军 → 红方胜（非和棋）', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final vm = container.read(boardViewModelProvider.notifier);
+      // 黑将 e9 的全部出格（d9/f9/e8）均被过河兵攻击，
+      // 黑方未被将军也无任何合法走法。
+      vm.newGameFromFen('4k4/3P1P3/4P4/9/9/9/9/9/9/3K5 b - - 0 1');
+      final state = container.read(boardViewModelProvider);
+      expect(state.result, GameResult.redWins, reason: '困毙方判负');
+    });
+
+    test('困毙判负：红方无子可动且未被将军 → 黑方胜', () {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final vm = container.read(boardViewModelProvider.notifier);
+      // 上一局面上下镜像：红帅的全部出格均被过河卒攻击。
+      vm.newGameFromFen('4k4/9/9/9/9/9/9/4p4/3p1p3/4K4 w - - 0 1');
+      final state = container.read(boardViewModelProvider);
+      expect(state.result, GameResult.blackWins, reason: '困毙方判负');
     });
 }

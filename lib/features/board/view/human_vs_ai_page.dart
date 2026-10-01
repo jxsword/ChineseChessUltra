@@ -82,17 +82,21 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
     super.initState();
     _boardViewModel = ref.read(boardViewModelProvider.notifier);
     final initialFen = widget.initialFen;
-    if (initialFen != null) {
-      // Riverpod 不允许在 widget 树构建期间修改 provider，延后到首帧后。
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ref.read(boardViewModelProvider.notifier).newGameFromFen(initialFen);
+    // Riverpod 不允许在 widget 树构建期间修改 provider，延后到首帧后。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (initialFen != null) {
+        _boardViewModel.newGameFromFen(initialFen);
         // 开局即轮到 AI：让 AI 先行。
         if (_isAiTurn() && ref.read(boardViewModelProvider).result == null) {
           _triggerAiMove();
         }
-      });
-    }
+      } else {
+        // 无参进入（如从残局对局返回主页后再进）必须重置全局棋盘，
+        // 清掉残局局面 / 胜负横幅 / 输入锁残留。
+        _boardViewModel.newGame();
+      }
+    });
   }
 
   @override
@@ -112,7 +116,7 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
       appBar: AppBar(
         title: Text(widget.initialFen != null
             ? '残局人机对战（玩家执$_playerSideName方）'
-            : '人机对战'),
+            : '人机对战',),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -316,7 +320,7 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
 
     return Container(
       padding: const EdgeInsets.all(16),
-      color: color.withOpacity(0.08),
+      color: color.withValues(alpha: 0.08),
       child: Row(
         children: [
           Icon(
@@ -366,7 +370,7 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
         title: Text(playerWon ? '残局闯关成功！' : '闯关失败'),
         content: Text(playerWon
             ? '恭喜你执$_playerSideName方取得胜利，可再来一局或返回残局。'
-            : '再接再厉，可以重试或换一种攻杀思路。'),
+            : '再接再厉，可以重试或换一种攻杀思路。',),
         actions: [
           TextButton(
             onPressed: () {
@@ -413,12 +417,9 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
   }
 
   void _saveGame() {
-    // TODO: 实现保存棋局功能
+    // TODO: 实现保存棋局功能（接通 sqlite 链路后再改回成功提示）。
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('棋局已保存'),
-        backgroundColor: Colors.green,
-      ),
+      const SnackBar(content: Text('保存功能开发中')),
     );
   }
 

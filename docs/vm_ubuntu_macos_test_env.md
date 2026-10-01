@@ -68,7 +68,8 @@ sudo apt-get install -y open-vm-tools open-vm-tools-desktop
 # libstdc++ 开发包不写死版本：build-essential 会带上当前系统的
 # libstdc++-<N>-dev（22.04 是 12，24.04 是 14，26.04 是 14/15），避免包名失配
 sudo apt-get install -y build-essential clang cmake ninja-build pkg-config \
-    libgtk-3-dev liblzma-dev
+    libgtk-3-dev liblzma-dev mesa-utils
+# mesa-utils 提供 eglinfo，消 flutter doctor 的 driver info 警告（非必需）
 # 注：Ubuntu 26.04 桌面默认 Wayland 会话。Flutter Linux 嵌入层是 GTK3/X11，
 # 经 XWayland 运行通常无碍；若窗口/输入异常，登录界面切 "Ubuntu on Xorg" 会话。
 ```

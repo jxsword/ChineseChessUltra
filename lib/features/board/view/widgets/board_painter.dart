@@ -117,6 +117,58 @@ class BoardPainter extends CustomPainter {
     for (final (c, r) in marks) {
       _drawCrossMark(canvas, offsetOf(c, r), cell * 0.08, linePaint);
     }
+
+    // 四周 ICCS 坐标标注（列 a-i、行 0-9，0 为红方底线）。
+    _drawCoordinates(canvas, layout);
+  }
+
+  /// 在棋盘行列两端绘制 ICCS 坐标：列 a-i（画布上下两端）、
+  /// 行 0-9（左右两端，rank 0 = 红方底线 = 内部 row 9）。
+  ///
+  /// 供玩家对照破解走法的 ICCS 步骤（如 h2e2）定位格子。
+  void _drawCoordinates(Canvas canvas, BoardLayout layout) {
+    final cell = layout.cell;
+    final originX = layout.originX;
+    final originY = layout.originY;
+    final style = TextStyle(
+      color: const Color(AppColors.riverText),
+      fontSize: cell * 0.28,
+      fontWeight: FontWeight.w600,
+    );
+    // 标注中心位于外框与画布边缘之间的空隙正中。
+    const gapRatio = 0.65; // 相对 cell 的偏移量（介于 0.5 外框与 0.8 画布边之间）
+    const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'];
+    for (var col = 0; col < 9; col++) {
+      final x = originX + col * cell;
+      _drawTextCentered(
+        canvas,
+        files[col],
+        Offset(x, originY - gapRatio * cell),
+        style,
+      );
+      _drawTextCentered(
+        canvas,
+        files[col],
+        Offset(x, originY + 9 * cell + gapRatio * cell),
+        style,
+      );
+    }
+    for (var row = 0; row < 10; row++) {
+      final rank = 9 - row; // ICCS 行号：0 = 红方底线
+      final y = originY + row * cell;
+      _drawTextCentered(
+        canvas,
+        '$rank',
+        Offset(originX - gapRatio * cell, y),
+        style,
+      );
+      _drawTextCentered(
+        canvas,
+        '$rank',
+        Offset(originX + 8 * cell + gapRatio * cell, y),
+        style,
+      );
+    }
   }
 
   void _drawCrossMark(

@@ -30,8 +30,8 @@ class BoardLayout {
   /// 加少量呼吸空隙。
   static const double _borderMarginRatio = 0.5;
 
-  /// 画布四周留白比例：外框外扩 + 边框线宽的余量。
-  static const double _canvasPaddingRatio = _borderMarginRatio + 0.05;
+  /// 画布四周留白比例：外框外扩 + 边框线宽 + 四周 ICCS 坐标标注的余量。
+  static const double _canvasPaddingRatio = _borderMarginRatio + 0.3;
 
   final double cell;
   final double originX;

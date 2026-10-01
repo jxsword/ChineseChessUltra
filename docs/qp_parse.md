@@ -186,3 +186,30 @@
 - `BoardViewModel.undoRound({playerSide = Side.red})`：与走子顺序无关地撤
   "AI 一手 + 玩家一手"（兼容 AI 先行开局轮）。
 - 测试：VM 5 项 + 页面 4 项（含玩家执黑 AI 先行、黑方悔棋语义），全量 96 项通过。
+
+## 诊断：残局演示/对战"像从全新盘开始"（2026-10-01）
+
+### 结论：数据语义问题，非解析缺陷、非 UI 接错
+- 解析链路正确：XQF 的 initialFen = 文件内 32 子布局直接解码（xqf_parser.dart
+  `_decodeBoard`）；演示从 initialFen 逐着播放（puzzle_vm.dart）；对战传入的就是
+  `ParsedPuzzle.initialFen`。
+- 用户试到的条目属于**全局对局类**语料（全局/大师专集/比赛对局/布局/PGN）：
+  初始盘面天然=标准开局、主线=整局走法 → "破解走法"实为整局主线。
+- **真残局类语料完好**（Python cchess 实证）：适情雅趣001/002/005 初始 FEN 均为
+  残局盘面、主线 9/11/7 步取胜；烂柯神机 16 步成和。
+
+### 待办（语义区分，另行确认后实施）
+1. 浏览页/详情页区分"全局对局 vs 残局题"（按 initialFen 是否标准开局 + 分类名）
+2. 全局类展示"对局演示/整局 N 步"，非残局隐藏"破解走法"措辞
+3. 棋谱库浏览页加"仅看残局"筛选
+
+## 棋盘 ICCS 坐标标注（2026-10-01 实施）
+
+- 需求：对照破解走法的 ICCS 步骤（如 h2e2）定位格子——列 a-i、行 0-9
+  标注在棋盘四端（行号 0 = 红方底线 = 画布底部）。
+- 实现：`BoardLayout._canvasPaddingRatio` 0.55 → 0.8 留白；
+  `BoardPainter._drawCoordinates` 在外框与画布边缘空隙（0.65 cell 处）
+  用 TextPainter 绘制，字号 0.28 cell，颜色同楚河汉界文字。
+- 对弈棋盘与残局演示棋盘共用 BoardPainter，标注自动生效；
+  点击命中/飞子动画共用同一 BoardLayout，自动适应。
+- 测试：BoardLayout 留白/等比尺寸断言 + BoardPainter 离屏绘制冒烟，全量 99 项通过。

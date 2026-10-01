@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+        <!-- 棋谱语料包下载（首启引导） -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:label="chinese_chess_ultra"
         android:name="${applicationName}"

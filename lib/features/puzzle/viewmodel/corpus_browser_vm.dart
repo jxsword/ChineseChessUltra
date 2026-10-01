@@ -5,7 +5,9 @@
 /// [PgnFileBrowserPage] 处理。
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../model/corpus_paths.dart';
 import '../model/corpus_scanner.dart';
 import '../model/puzzle_data.dart';
 
@@ -16,6 +18,9 @@ enum CorpusSortMode { name, moves, difficulty }
 class CorpusBrowserState {
   /// 语料目录是否存在（不存在时展示引导）。
   final bool corpusExists;
+
+  /// 解析后的语料目录绝对路径（用于缺失引导展示/下载）。
+  final String? corpusPath;
 
   final List<CorpusCategory> categories;
 
@@ -43,6 +48,7 @@ class CorpusBrowserState {
 
   const CorpusBrowserState({
     this.corpusExists = true,
+    this.corpusPath,
     this.categories = const [],
     this.selectedCategory,
     this.entries = const [],
@@ -95,6 +101,8 @@ class CorpusBrowserState {
 
   CorpusBrowserState copyWith({
     bool? corpusExists,
+    String? corpusPath,
+    bool clearCorpusPath = false,
     List<CorpusCategory>? categories,
     int? selectedCategory,
     bool clearSelectedCategory = false,
@@ -110,6 +118,7 @@ class CorpusBrowserState {
   }) {
     return CorpusBrowserState(
       corpusExists: corpusExists ?? this.corpusExists,
+      corpusPath: clearCorpusPath ? null : (corpusPath ?? this.corpusPath),
       categories: categories ?? this.categories,
       selectedCategory:
           clearSelectedCategory ? null : (selectedCategory ?? this.selectedCategory),
@@ -130,23 +139,52 @@ class CorpusBrowserViewModel extends Notifier<CorpusBrowserState> {
   /// 防止切分类后旧解析任务覆盖新状态。
   int _generation = 0;
 
+  SharedPreferences? _prefs;
+
+  /// 当前生效的语料仓库（load 后可用）。
+  CorpusRepository? _repo;
+
   @override
   CorpusBrowserState build() {
     return const CorpusBrowserState();
   }
 
-  /// 初始化：扫描分类。
+  /// 初始化：解析语料目录（用户设置 > legacy 联接 > 平台默认）并扫描分类。
   Future<void> load() async {
-    final repo = CorpusRepository();
+    _prefs = await SharedPreferences.getInstance();
+    final userPath = _prefs!.getString(CorpusPaths.userPathPrefKey);
+    final dir = await CorpusPaths.resolveDirectory(userSetting: userPath);
+    final repo = CorpusRepository(root: dir);
+    _repo = repo;
+
     if (!repo.exists) {
-      state = state.copyWith(corpusExists: false, categories: const []);
+      state = state.copyWith(
+        corpusExists: false,
+        corpusPath: dir.path,
+        categories: const [],
+        clearSelectedCategory: true,
+        entries: const [],
+        puzzles: const [],
+        clearProgress: true,
+      );
       return;
     }
     final categories = repo.scanCategories();
-    state = state.copyWith(corpusExists: true, categories: categories);
+    state = state.copyWith(
+      corpusExists: true,
+      corpusPath: dir.path,
+      categories: categories,
+    );
     if (categories.isNotEmpty) {
       await selectCategory(0);
     }
+  }
+
+  /// 桌面端：选择自定义棋谱目录并持久化，然后重新加载。
+  Future<void> pickCustomDirectory(String directoryPath) async {
+    final prefs = _prefs ?? await SharedPreferences.getInstance();
+    await prefs.setString(CorpusPaths.userPathPrefKey, directoryPath);
+    await load();
   }
 
   /// 选择分类；PGN 大文件分类只记录选中（页面层跳转），不批量解析。
@@ -160,7 +198,7 @@ class CorpusBrowserViewModel extends Notifier<CorpusBrowserState> {
     );
     if (category.kind != CorpusKind.xqfDirectory) return;
 
-    final repo = CorpusRepository();
+    final repo = _repo ?? CorpusRepository();
     final entries = repo.listXqfEntries(category);
     state = state.copyWith(
       entries: entries,

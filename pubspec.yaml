@@ -37,6 +37,10 @@ dependencies:
   logging: ^1.3.0
   meta: ^1.11.0
 
+  # 棋谱路径设置持久化 / 语料包下载解压
+  shared_preferences: ^2.2.0
+  archive: ^3.6.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

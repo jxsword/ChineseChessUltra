@@ -230,3 +230,35 @@
 - **棋谱库浏览页**：新增"仅看残局"筛选（FilterChip，按解析结果过滤）；
   列表行副标题显示来源子分类与类型。
 - 测试：isEndgamePuzzle 判定 4 项 + 语料 source 子分类用例，全量 103 项通过。
+
+## 棋谱路径多平台支持与下载引导（2026-10-01 实施）
+
+### 设计（混合方案）
+| 平台 | 默认路径 | 自定义 | 获取方式 |
+|------|----------|--------|----------|
+| Windows | `文档\ChineseChessUltra\corpus` | ✅ 设置页选目录 | 手动放置或应用内下载 |
+| macOS | `~/Documents/ChineseChessUltra/corpus` | ✅ 同上 | 同上 |
+| Linux | `~/Documents/ChineseChessUltra/corpus` | ✅ 同上 | 同上 |
+| Android | `Android/data/<包名>/files/corpus`（应用专属外置目录） | ❌ 分区存储限制 | 首次启动检测为空 → 引导下载 |
+
+路径解析优先级：用户设置（SharedPreferences `corpus.userPath`）> 旧版相对
+`corpus`（Windows 联接，存在即沿用，开发流不变）> 平台默认目录。
+
+### 实现
+- `corpus_paths.dart`：路径解析 + 下载 URL 安全校验（仅 https 公网；拒绝
+  localhost/环回/私有/保留/链路本地/mDNS——防 SSRF）。
+- `corpus_downloader.dart`：HTTPS 下载（重定向手动跟随、逐跳校验）+ zip 解压
+  （zip-slip 防护：拒绝 `..`、绝对路径、盘符段、符号链接条目）+ 临时文件清理；
+  进度回调（已接收/总字节）。
+- `corpus_browser_page`：语料缺失引导页展示当前路径 + "下载棋谱库"按钮
+  （带进度对话框，完成后自动重新加载）；桌面端另有"选择其他棋谱目录"
+  （file_picker）与 AppBar 设置入口。
+- `AndroidManifest.xml` 补 INTERNET 权限；新增依赖 shared_preferences、archive。
+- 下载源：`CorpusPaths.downloadUrl` 常量指向
+  `https://github.com/jxsword/qp-corpus/releases/latest/download/qp-corpus.zip`
+  ——需在 qp-corpus 仓库发 Release 并上传 qp-corpus.zip（语料结构 = E:\ssy_proj\qp
+  内容原样，多级子目录保持不变）。
+- 测试：URL 校验 3 项 + zip 正常解压/防穿越 2 项，全量 108 项通过。
+
+### 待办
+- Android 真机/模拟器验证下载-解压-扫描全链路。

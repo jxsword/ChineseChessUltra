@@ -3,9 +3,14 @@
 /// 一级为分类（XQF 子目录 / PGN 大文件），二级为棋局列表，
 /// 支持搜索、难度筛选与按步数/难度排序；点开棋局进入演示页。
 
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../model/corpus_downloader.dart';
+import '../model/corpus_paths.dart';
 import '../model/corpus_scanner.dart';
 import '../viewmodel/corpus_browser_vm.dart';
 import 'corpus_pgn_browser_page.dart';
@@ -20,6 +25,8 @@ class CorpusBrowserPage extends ConsumerStatefulWidget {
 }
 
 class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
+  String _downloadStatus = '正在下载语料包…';
+
   @override
   void initState() {
     super.initState();
@@ -31,10 +38,26 @@ class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(corpusBrowserProvider);
+    final isDesktop = !Platform.isAndroid && !Platform.isIOS;
     return Scaffold(
-      appBar: AppBar(title: const Text('本地棋谱库')),
+      appBar: AppBar(
+        title: const Text('本地棋谱库'),
+        actions: [
+          if (isDesktop)
+            IconButton(
+              icon: const Icon(Icons.folder_open),
+              tooltip: '设置棋谱目录',
+              onPressed: () => _pickCorpusDirectory(state),
+            ),
+        ],
+      ),
       body: !state.corpusExists
-          ? const _CorpusMissingGuide()
+          ? _CorpusMissingGuide(
+              corpusPath: state.corpusPath,
+              isDesktop: isDesktop,
+              onDownload: _downloadCorpus,
+              onPickDirectory: () => _pickCorpusDirectory(state),
+            )
           : Column(
               children: [
                 _buildCategoryBar(state),
@@ -168,6 +191,68 @@ class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
     );
   }
 
+  /// 下载语料包并解压到当前语料目录，带进度对话框。
+  Future<void> _downloadCorpus() async {
+    final targetPath = ref.read(corpusBrowserProvider).corpusPath;
+    if (targetPath == null) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(_downloadStatus),
+            ],
+          ),
+        ),
+      ),
+    );
+    try {
+      await CorpusDownloader.downloadAndExtract(
+        url: CorpusPaths.downloadUrl,
+        targetDir: Directory(targetPath),
+        onProgress: (received, total) {
+          final text = total > 0
+              ? '正在下载语料包… '
+                  '${(received / 1024 / 1024).toStringAsFixed(1)} / '
+                  '${(total / 1024 / 1024).toStringAsFixed(1)} MB'
+              : '正在下载语料包… '
+                  '${(received / 1024 / 1024).toStringAsFixed(1)} MB';
+          if (_downloadStatus != text && mounted) {
+            setState(() => _downloadStatus = text);
+          }
+        },
+      );
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // 关进度框
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('棋谱下载完成'), backgroundColor: Colors.green),
+      );
+      await ref.read(corpusBrowserProvider.notifier).load();
+    } on Object catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // 关进度框
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('下载失败: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  /// 桌面端：选择自定义棋谱目录。
+  Future<void> _pickCorpusDirectory(CorpusBrowserState state) async {
+    final selected = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: '选择棋谱目录',
+      initialDirectory: state.corpusPath,
+    );
+    if (selected == null || !mounted) return;
+    await ref.read(corpusBrowserProvider.notifier).pickCustomDirectory(selected);
+  }
+
   Widget _buildBody(CorpusBrowserState state) {
     if (state.selectedCategory == null) {
       return const Center(child: Text('请选择分类'));
@@ -225,9 +310,19 @@ class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
   }
 }
 
-/// 语料目录缺失时的引导。
+/// 语料目录缺失时的引导：展示当前路径，提供下载 / 选择其他目录。
 class _CorpusMissingGuide extends StatelessWidget {
-  const _CorpusMissingGuide();
+  const _CorpusMissingGuide({
+    required this.corpusPath,
+    required this.isDesktop,
+    required this.onDownload,
+    required this.onPickDirectory,
+  });
+
+  final String? corpusPath;
+  final bool isDesktop;
+  final Future<void> Function() onDownload;
+  final Future<void> Function() onPickDirectory;
 
   @override
   Widget build(BuildContext context) {
@@ -239,15 +334,29 @@ class _CorpusMissingGuide extends StatelessWidget {
           children: [
             const Icon(Icons.folder_off, size: 64, color: Colors.grey),
             const SizedBox(height: 16),
-            const Text('未找到本地棋谱语料目录'),
+            const Text('未找到棋谱语料'),
             const SizedBox(height: 8),
-            const Text(
-              '语料保存在 E:\\ssy_proj\\qp，项目根需存在其目录联接：\n'
-              'mklink /J corpus E:\\ssy_proj\\qp\n'
-              '（详见 docs/qp_parse.md）',
+            Text(
+              '棋谱目录：${corpusPath ?? "（未解析）"}\n'
+              '可从网络下载语料包，'
+              '${isDesktop ? "或将已下载的语料目录放到该位置/选择其他目录" : "稍后可重新进入此页"}。',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 12),
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
             ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onDownload,
+              icon: const Icon(Icons.download),
+              label: const Text('下载棋谱库（约 150MB）'),
+            ),
+            if (isDesktop) ...[
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: onPickDirectory,
+                icon: const Icon(Icons.folder_open),
+                label: const Text('选择其他棋谱目录'),
+              ),
+            ],
           ],
         ),
       ),

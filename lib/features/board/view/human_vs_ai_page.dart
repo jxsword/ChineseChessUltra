@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/engine/ai_engine.dart';
+import '../../storage/game_mode.dart';
+import '../../storage/repository.dart';
 import '../model/board_state.dart';
 import '../model/move.dart';
 import '../model/piece.dart';
 import '../viewmodel/board_vm.dart';
+import '../viewmodel/game_restore.dart';
 import '../view/widgets/board_widget.dart';
 import '../view/widgets/side_panel.dart';
 
@@ -92,11 +95,33 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
           _triggerAiMove();
         }
       } else {
-        // 无参进入（如从残局对局返回主页后再进）必须重置全局棋盘，
-        // 清掉残局局面 / 胜负横幅 / 输入锁残留。
-        _boardViewModel.newGame();
+        // 无参进入（从主页进入人机对战）：恢复该模式最近保存的棋局，
+        // 无存档则重开新局（同时清掉残局局面 / 胜负横幅 / 输入锁残留）。
+        _restoreOrNewGame();
       }
     });
+  }
+
+  /// 恢复人机模式存档；无存档则开新局。恢复后轮到 AI 时自动接走。
+  Future<void> _restoreOrNewGame() async {
+    final GameRepository repo;
+    try {
+      repo = await ref.read(gameRepositoryProvider.future);
+    } on Object {
+      // 存储不可用（如 path_provider 异常）：退化为新局。
+      if (mounted) _boardViewModel.newGame();
+      return;
+    }
+    if (!mounted) return;
+    final outcome = await restoreOrNewGame(
+      repo: repo,
+      viewModel: _boardViewModel,
+      mode: GameMode.humanVsAi,
+    );
+    if (!mounted || outcome != RestoreOutcome.restored) return;
+    if (_isAiTurn()) {
+      _triggerAiMove();
+    }
   }
 
   @override
@@ -282,15 +307,18 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
             minimumSize: const Size(double.infinity, 40),
           ),
         ),
-        const SizedBox(height: 8),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.save),
-          label: const Text('保存棋局'),
-          onPressed: _saveGame,
-          style: ElevatedButton.styleFrom(
-            minimumSize: const Size(double.infinity, 40),
+        // 残局闯关是固定局面的重开玩法，不提供保存。
+        if (widget.initialFen == null) ...[
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.save),
+            label: const Text('保存棋局'),
+            onPressed: _saveGame,
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 40),
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
@@ -416,11 +444,26 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
     ref.read(boardViewModelProvider.notifier).undoRound(playerSide: _playerSide);
   }
 
-  void _saveGame() {
-    // TODO: 实现保存棋局功能（接通 sqlite 链路后再改回成功提示）。
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('保存功能开发中')),
-    );
+  /// 保存当前棋局到人机模式存档（覆盖上一份）。
+  Future<void> _saveGame() async {
+    try {
+      final repo = await ref.read(gameRepositoryProvider.future);
+      final data = _boardViewModel.serialize();
+      repo.saveGame(
+        mode: GameMode.humanVsAi,
+        fen: data.fen,
+        moves: data.moves,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('棋局已保存')),
+      );
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('保存失败：本地存储不可用')),
+      );
+    }
   }
 
   /// 玩家走子完成后的回调：对局未结束则轮到 AI 应手。

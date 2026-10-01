@@ -5,8 +5,26 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:chinese_chess_ultra/features/board/model/board_state.dart';
 import 'package:chinese_chess_ultra/features/board/view/ai_vs_ai_page.dart';
 import 'package:chinese_chess_ultra/features/board/viewmodel/board_vm.dart';
+import 'package:chinese_chess_ultra/features/storage/game_dao.dart';
+import 'package:chinese_chess_ultra/features/storage/repository.dart';
 
 void main() {
+  // 页面进入时会读存档（恢复棋局），用内存库替换文件数据库，
+  // 避免测试环境依赖 path_provider 平台通道。
+  late GameDao dao;
+  late GameRepository repo;
+
+  setUp(() {
+    dao = GameDao.inMemory();
+    repo = GameRepository(dao);
+  });
+  tearDown(() => dao.dispose());
+
+  // 闭包在 Provider 首次读取时才执行，届时 repo 已由 setUp 赋值。
+  final overrides = <Override>[
+    gameRepositoryProvider.overrideWith((ref) => repo),
+  ];
+
   testWidgets('AI对战：开始后 AI 应手应真正落子并更新棋盘状态', (tester) async {
     BoardState captured = const BoardState(
       fen: '',
@@ -23,6 +41,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        overrides: overrides,
         child: Consumer(
           builder: (context, ref, _) {
             captured = ref.watch(boardViewModelProvider);
@@ -66,7 +85,7 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: overrides);
     addTearDown(container.dispose);
 
     await tester.pumpWidget(

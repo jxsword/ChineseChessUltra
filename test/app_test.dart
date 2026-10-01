@@ -2,7 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:chinese_chess_ultra/app/app.dart';
+import 'package:chinese_chess_ultra/features/board/model/board.dart';
+import 'package:chinese_chess_ultra/features/board/model/move.dart';
+import 'package:chinese_chess_ultra/features/board/viewmodel/board_vm.dart';
 import 'package:chinese_chess_ultra/features/storage/game_dao.dart';
+import 'package:chinese_chess_ultra/features/storage/game_mode.dart';
 import 'package:chinese_chess_ultra/features/storage/repository.dart';
 
 void main() {
@@ -30,5 +34,74 @@ void main() {
     expect(find.text('双人对弈'), findsOneWidget);
 
     dao.dispose();
+  });
+
+  testWidgets('双人对弈页进入时自动恢复存档', (tester) async {
+    final dao = GameDao.inMemory();
+    final repo = GameRepository(dao);
+    // 预置一份双人对弈存档：红炮平中（炮二平五）后的局面。
+    final board = Board.initial();
+    board.applyMove(Move(from: Position(7, 7), to: Position(7, 4)));
+    final savedFen = board.toFen();
+    repo.saveGame(
+      mode: GameMode.humanVsHuman,
+      fen: savedFen,
+      moves: [Move(from: Position(7, 7), to: Position(7, 4))],
+    );
+
+    final container = ProviderContainer(
+      overrides: [gameRepositoryProvider.overrideWith((ref) => repo)],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const ChineseChessApp(),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.text('双人对弈'));
+    // 推入路由 + initState 的 postFrameCallback + 异步恢复。
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(container.read(boardViewModelProvider).fen, savedFen);
+  });
+
+  testWidgets('机器对战页无存档进入时重置全局棋盘（消除内存残留）', (tester) async {
+    final dao = GameDao.inMemory();
+    final repo = GameRepository(dao);
+
+    final container = ProviderContainer(
+      overrides: [gameRepositoryProvider.overrideWith((ref) => repo)],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const ChineseChessApp(),
+      ),
+    );
+    await tester.pump();
+
+    // 污染全局棋盘（模拟上一局残留）。
+    container
+        .read(boardViewModelProvider.notifier)
+        .playMove(Position(7, 7), Position(7, 4));
+    final initialFen = Board.initial().toFen();
+    expect(
+      container.read(boardViewModelProvider).fen,
+      isNot(initialFen),
+    );
+
+    await tester.tap(find.text('机器对战'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    // 无存档进入后应重置为初始局面，而不是残留上一局。
+    expect(container.read(boardViewModelProvider).fen, initialFen);
   });
 }

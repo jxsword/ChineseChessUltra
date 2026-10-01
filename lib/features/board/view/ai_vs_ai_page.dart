@@ -5,9 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/engine/ai_engine.dart';
+import '../../storage/game_mode.dart';
+import '../../storage/repository.dart';
 import '../model/board_state.dart';
 import '../model/move.dart';
 import '../viewmodel/board_vm.dart';
+import '../viewmodel/game_restore.dart';
 import '../view/widgets/board_widget.dart';
 import '../view/widgets/side_panel.dart';
 
@@ -49,6 +52,40 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
   void initState() {
     super.initState();
     _boardViewModel = ref.read(boardViewModelProvider.notifier);
+    // 进入页面即恢复机器对战存档（无存档则重开新局），消除全局棋盘
+    // 内存残留的歧义：进入后看到的要么是存档局面，要么是新局。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _restoreOrNewGame();
+    });
+  }
+
+  /// 恢复机器对战模式存档；无存档则开新局。
+  Future<void> _restoreOrNewGame() async {
+    final GameRepository repo;
+    try {
+      repo = await ref.read(gameRepositoryProvider.future);
+    } on Object {
+      // 存储不可用（如 path_provider 异常）：退化为新局。
+      if (mounted) _boardViewModel.newGame();
+      return;
+    }
+    if (!mounted) return;
+    final outcome = await restoreOrNewGame(
+      repo: repo,
+      viewModel: _boardViewModel,
+      mode: GameMode.aiVsAi,
+    );
+    if (!mounted || outcome != RestoreOutcome.restored) return;
+    // 恢复成功：提示可继续，并把最后一手回填到状态栏。
+    final history = ref.read(boardViewModelProvider).moveHistory;
+    final last = history.isEmpty ? null : history.last;
+    setState(() {
+      _currentStatus = '已恢复上次保存的对局，点击开始继续';
+      if (last?.piece != null) {
+        _lastMove = last!.chineseNotation(last.piece!);
+      }
+    });
   }
 
   @override
@@ -73,6 +110,11 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
             icon: Icon(_isRunning && !_isPaused ? Icons.pause : Icons.play_arrow),
             onPressed: _togglePlayPause,
             tooltip: _isRunning && !_isPaused ? '暂停' : '开始',
+          ),
+          IconButton(
+            icon: const Icon(Icons.save),
+            onPressed: _saveGame,
+            tooltip: '保存棋局',
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -450,6 +492,28 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
     });
     if (_autoStart) {
       _startBattle();
+    }
+  }
+
+  /// 保存当前棋局到机器对战存档（覆盖上一份）。
+  Future<void> _saveGame() async {
+    try {
+      final repo = await ref.read(gameRepositoryProvider.future);
+      final data = _boardViewModel.serialize();
+      repo.saveGame(
+        mode: GameMode.aiVsAi,
+        fen: data.fen,
+        moves: data.moves,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('棋局已保存')),
+      );
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('保存失败：本地存储不可用')),
+      );
     }
   }
 

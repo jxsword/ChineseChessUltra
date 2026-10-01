@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../board/model/fen.dart';
 import '../board/model/move.dart';
 import 'game_dao.dart';
+import 'game_mode.dart';
 
 /// 仓储层：包装 [GameDao]，提供对局保存/恢复的业务语义。
 ///
@@ -12,23 +13,26 @@ class GameRepository {
 
   final GameDao _dao;
 
-  /// 保存当前局面（含完整走法历史）。
+  /// 保存当前局面（含完整走法历史）到 [mode] 的存档桶。
   ///
-  /// 如果 [existingId] 不为空，则更新该条；否则插入新条。
+  /// 每个模式只保留最近一局：已有该模式存档时覆盖更新。
   /// 返回写入后的对局 id。
   int saveGame({
-    int? existingId,
+    required GameMode mode,
     required String fen,
     required List<Move> moves,
   }) {
     final serialized = moves
         .map((m) => <int>[m.from.col, m.from.row, m.to.col, m.to.row])
         .toList();
-    return _dao.upsert(id: existingId, fen: fen, moves: serialized);
+    return _dao.upsertForMode(mode: mode.name, fen: fen, moves: serialized);
   }
 
-  /// 读取最近一局（用于启动恢复）。
-  SavedGame? loadLatest() => _dao.latest();
+  /// 读取 [mode] 模式的最近一局（用于进入模式时自动恢复）。
+  SavedGame? loadLatest(GameMode mode) => _dao.latestForMode(mode.name);
+
+  /// 删除 [mode] 模式的存档。
+  void deleteForMode(GameMode mode) => _dao.deleteForMode(mode.name);
 
   /// 列出全部历史。
   List<SavedGame> listAll() => _dao.all();

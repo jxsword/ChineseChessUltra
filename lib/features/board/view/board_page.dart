@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/constants.dart';
+import '../../storage/game_mode.dart';
 import '../../storage/repository.dart';
 import '../viewmodel/board_vm.dart';
 import 'widgets/board_widget.dart';
@@ -147,8 +148,10 @@ class _BoardArea extends StatelessWidget {
 /// 处理棋局保存/恢复生命周期的 Notifier。
 ///
 /// 用一个独立 Notifier 把存储与 UI 解耦，UI 只需在合适时机调用其方法。
+///
+/// 注意：本页面在二期导航重构后已无入口路由（被各模式专属页面取代），
+/// 仅作参考实现保留；存档归属 [GameMode.humanVsAi] 桶。
 class BoardLifecycleNotifier extends Notifier<bool> {
-  int? _currentGameId;
   bool _restored = false;
 
   @override
@@ -166,10 +169,8 @@ class BoardLifecycleNotifier extends Notifier<bool> {
     _restored = true;
     try {
       final repo = await _repo();
-      final latest = repo.loadLatest();
+      final latest = repo.loadLatest(GameMode.humanVsAi);
       if (latest != null) {
-        _currentGameId = latest.id;
-
         // 限制恢复步数，避免长局导致阻塞。
         final moves = latest.moves.length > 50
             ? latest.moves.sublist(0, 50)
@@ -206,8 +207,8 @@ class BoardLifecycleNotifier extends Notifier<bool> {
       final vm = ref.read(boardViewModelProvider.notifier);
       final snapshot = vm.serialize();
       final repo = await _repo();
-      _currentGameId = repo.saveGame(
-        existingId: _currentGameId,
+      repo.saveGame(
+        mode: GameMode.humanVsAi,
         fen: snapshot.fen,
         moves: snapshot.moves,
       );
@@ -217,9 +218,14 @@ class BoardLifecycleNotifier extends Notifier<bool> {
     }
   }
 
-  /// 新游戏：清空当前 id，使下一次走子写入新条。
+  /// 新游戏：清掉存档，避免下次启动恢复到已重开的局面。
   void forgetCurrentGame() {
-    _currentGameId = null;
+    _repo()
+        .then((repo) => repo.deleteForMode(GameMode.humanVsAi))
+        .catchError((Object e) {
+      // ignore: avoid_print
+      print('Forget save failed: $e');
+    });
   }
 }
 

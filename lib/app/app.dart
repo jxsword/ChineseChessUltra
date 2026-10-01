@@ -10,8 +10,11 @@ import '../features/board/view/ai_vs_ai_page.dart';
 import '../features/board/model/board.dart';
 import '../features/board/model/board_state.dart';
 import '../features/board/viewmodel/board_vm.dart';
+import '../features/board/viewmodel/game_restore.dart';
 import '../features/board/view/widgets/board_widget.dart';
 import '../features/board/view/widgets/side_panel.dart';
+import '../features/storage/game_mode.dart';
+import '../features/storage/repository.dart';
 
 /// 应用根 Widget。
 class ChineseChessApp extends StatelessWidget {
@@ -150,6 +153,30 @@ class _HumanVsHumanGamePageState extends ConsumerState<HumanVsHumanGamePage> {
   void initState() {
     super.initState();
     _startTimer();
+    // 进入页面即恢复双人对弈存档（无存档则重开新局），消除全局棋盘
+    // 内存残留的歧义：进入后看到的要么是存档局面，要么是新局。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _restoreOrNewGame();
+    });
+  }
+
+  /// 恢复双人对弈模式存档；无存档则开新局。
+  Future<void> _restoreOrNewGame() async {
+    final GameRepository repo;
+    try {
+      repo = await ref.read(gameRepositoryProvider.future);
+    } on Object {
+      // 存储不可用（如 path_provider 异常）：退化为新局。
+      if (mounted) ref.read(boardViewModelProvider.notifier).newGame();
+      return;
+    }
+    if (!mounted) return;
+    await restoreOrNewGame(
+      repo: repo,
+      viewModel: ref.read(boardViewModelProvider.notifier),
+      mode: GameMode.humanVsHuman,
+    );
   }
 
   @override
@@ -423,11 +450,26 @@ class _HumanVsHumanGamePageState extends ConsumerState<HumanVsHumanGamePage> {
     ref.read(boardViewModelProvider.notifier).undo();
   }
 
-  void _saveGame() {
-    // TODO: 实现保存棋局功能（接通 sqlite 链路后再改回成功提示）。
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('保存功能开发中')),
-    );
+  /// 保存当前棋局到双人对弈存档（覆盖上一份）。
+  Future<void> _saveGame() async {
+    try {
+      final repo = await ref.read(gameRepositoryProvider.future);
+      final data = ref.read(boardViewModelProvider.notifier).serialize();
+      repo.saveGame(
+        mode: GameMode.humanVsHuman,
+        fen: data.fen,
+        moves: data.moves,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('棋局已保存')),
+      );
+    } on Object {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('保存失败：本地存储不可用')),
+      );
+    }
   }
 
   void _shareGame() {

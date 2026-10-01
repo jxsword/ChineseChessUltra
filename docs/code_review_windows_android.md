@@ -339,3 +339,18 @@ APK 构建并在 Pixel_7_API34 模拟器完成交互冒烟。
 2. **P1-4 取消粒度**：取消标志在"各阶段间 + 下载流每个 chunk"轮询；解压（isolate 内）运行中不可中断，取消在其完成后的替换前生效——报告中未要求 isolate 内中断，可接受。
 3. **P2-2 大小区间**：报告建议"期望大小区间"，实现取 [1MB, 512MB]（当前包 45.8MB，留足版本演进余量）；SHA-256 按指示留 TODO 未固化。
 4. **extractZip 返回值**：由 `int` 改为 `({int extracted, int skipped})` 记录（承载 P2-7 跳过计数），`downloadAndExtract` 返回 `CorpusDownloadResult`——报告建议"完成提示中说明跳过条目"所需。
+
+### 第四批：接通保存/恢复棋局（原 P1-3 后续，本期完成）
+
+P1-3 当时按最小改动把"保存假成功"降级为"保存功能开发中"提示。本次接通一期已就绪但未接线的 sqlite 存储链路（`game_dao.dart` / `repository.dart` / `board_vm.serialize()/restore()`），按用户决策实现：
+
+| 项 | 实现 | 验证 |
+|------|------|------|
+| 按模式分存 | `saved_games` 表新增 `mode` 列（一期旧库自动迁移，老数据标记 `legacy` 不再被读取）；`GameRepository` 改为 `saveGame(mode:)` / `loadLatest(mode)` / `deleteForMode(mode)`，每个模式只保留最近一局，互不覆盖 | `game_dao_test.dart`：多模式并存、同模式覆盖、legacy 迁移后按模式查不到 |
+| 保存入口 | 人机对战（残局闯关模式隐藏保存按钮）、双人对弈（AppBar + 侧栏）、机器对战（AppBar 新增保存按钮）三处 `_saveGame` 接通真实存储，成功提示"棋局已保存"，存储异常提示失败 | 全量 `flutter test`（130 项）通过 |
+| 进入自动恢复 | 三页 `initState` 统一走 `game_restore.dart` 的 `restoreOrNewGame()`：有存档→`BoardViewModel.restore` 重放走法（恢复后轮到 AI 自动接走）；存档重放后已分胜负→清档开新局；无存档→开新局 | `app_test.dart` 新增：双人对弈进入自动恢复存档；机器对战无存档进入重置全局棋盘（消除"返回再进棋局还在"的内存残留歧义） |
+| 残局闯关 | 固定局面重开玩法，不参与保存/恢复 | 人机页残局模式无保存按钮 |
+
+行为说明：存档语义为"最近一次手动保存的检查点"——手动"新游戏"不删除存档（下次进入仍恢复该检查点），恢复到已分胜负的死局时自动清档。
+
+测试适配：既有 `human_vs_ai_page_test.dart` / `ai_vs_ai_page_test.dart` 因页面进入即读存档，补 `gameRepositoryProvider` 内存库 override；顺带移除遗留的 `test/widget_test.dart`（flutter create 计数器模板，引用不存在的 `MyApp`，无法编译且阻塞全量测试）。

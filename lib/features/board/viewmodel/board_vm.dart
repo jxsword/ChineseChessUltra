@@ -76,6 +76,10 @@ class BoardViewModel extends Notifier<BoardState> {
 
   Board get board => _board;
 
+  /// 当前状态快照（供存档恢复流程等外部读取，避免触碰 Notifier 的
+  /// 受保护 state 成员）。
+  BoardState get current => state;
+
   /// 当前是否轮到红方走。
   bool get isRedTurn => _board.isRedTurn;
 

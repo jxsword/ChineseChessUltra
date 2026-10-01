@@ -100,7 +100,8 @@ jobs:
       - name: 安装 Linux 构建依赖
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev \
+            libsecret-1-dev libjsoncpp-dev
 
       - name: 构建 Linux 应用（debug）
         run: flutter build linux --debug

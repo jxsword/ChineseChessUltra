@@ -112,6 +112,8 @@ adb logcat -s flutter
    `git -c credential.helper= -c 'credential.https://github.com.helper=!gh auth git-credential' push`。
 5. **模拟器/真机直连 GitHub Release 大概率失败**：语料下载（45.8MB）需代理环境；
    模拟器用 `-http-proxy socks5://10.0.2.2:10808`，实测约 110KB/s。
+   代理配置完整方案（命令行参数 / Extended Controls / guest 全局代理的实测
+   对比、config.ini 键不可用结论与验证方法）见 `docs/android_emulator_proxy.md`。
 6. **MSYS/Git Bash 路径转换**：`adb shell ls /storage/...` 会被转成本地盘符路径，
    需 `export MSYS_NO_PATHCONV=1` 或对整条命令加引号。
 

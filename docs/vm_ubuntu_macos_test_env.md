@@ -26,11 +26,15 @@
    `chore: 补充 linux/macos 平台脚手架供 VM 冒烟`）。VM 侧只需 clone/pull。
 
 2. **准备语料拷贝源**（VM 内应用内下载不可用时的替代）：Windows 开发机已有
-   完整语料（`E:\ssy_proj\qp`，经项目根 `corpus` 联接引用，约 245MB 解压后）。
-   打包备用：
+   完整语料（`E:\ssy_proj\qp`，经项目根 `corpus` 联接引用，约 233MB 解压后）。
+   打包备用（**必须排除 `.git`**——qp 本身是 git 仓库，`.git` 占 45MB，
+   对 VM 冒烟无用，且会被棋谱扫描误当作一个分类目录）：
 
    ```bash
-   tar -czf corpus.tar.gz -C E:\ssy_proj\qp .
+   # Git Bash 下（路径写 /e/...；cmd 中可用 E:\ssy_proj\qp）
+   tar -czf corpus.tar.gz --exclude='.git' -C /e/ssy_proj/qp .
+   # 产物约 180MB；VM 解压前可校验无 .git 残留：
+   # tar -tzf corpus.tar.gz | grep -c '\.git/'   # 应输出 0
    ```
 
 3. **代码传输方式**（按优先级）：

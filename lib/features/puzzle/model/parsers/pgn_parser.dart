@@ -433,14 +433,31 @@ static final _innermostVarPattern = RegExp(r'\([^()]*\)');
     final raf = File(path).openSync();
     try {
       const chunkSize = 1 << 20;
+      // 单行字节缓冲上限：超过后该行按非标签行（moves 行）处理并丢弃
+      // 剩余内容，防止畸形 .pgns（单行百 MB 无换行）把 pending 撑到全文件大小。
+      const maxPendingBytes = 8 << 20;
       var filePos = 0; // 已读完的字节数
       var pendingStart = 0; // pending[0] 在文件中的位置
       var gameStart = -1;
       var gameTags = <String, String>{};
       var inMoves = false;
+      var pendingTruncated = false; // 当前行已超限、内容被丢弃
       List<int> pending = []; // 未成行的剩余字节
 
+      void processTruncatedLine(List<int> lineBytes, int lineStart) {
+        // 超长行按非标签行处理（计为 moves 行），不解析内容。
+        if (lineBytes.any(
+            (b) => b != 0x0D && b != 0x0A && b != 0x20 && b != 0x09)) {
+          inMoves = true;
+          if (gameStart < 0) gameStart = lineStart;
+        }
+      }
+
       void processLine(List<int> lineBytes, int lineStart) {
+        if (pendingTruncated) {
+          processTruncatedLine(lineBytes, lineStart);
+          return;
+        }
         final isTagLine = lineBytes.isNotEmpty && lineBytes[0] == 0x5B; // '['
         if (isTagLine) {
           if (inMoves) {
@@ -485,19 +502,31 @@ static final _innermostVarPattern = RegExp(r'\([^()]*\)');
             }
             processLine(lineBytes, lineStart);
             pending = [];
+            pendingTruncated = false;
             segStart = i + 1;
             if (maxGames > 0 && result.length >= maxGames) return result;
           }
         }
         if (pending.isEmpty) pendingStart = filePos + segStart;
         if (segStart < chunk.length) {
-          pending.addAll(chunk.sublist(segStart));
+          final remainder = chunk.sublist(segStart);
+          final room = maxPendingBytes - pending.length;
+          if (remainder.length > room) {
+            if (room > 0) {
+              pending.addAll(remainder.sublist(0, room));
+            }
+            pendingTruncated = true;
+          } else {
+            pending.addAll(remainder);
+          }
         }
         filePos += chunk.length;
       }
       // 文件末尾最后一行（若非空）。
       if (pending.isNotEmpty) {
         processLine(pending, pendingStart);
+        pending = [];
+        pendingTruncated = false;
       }
       if (gameStart >= 0) {
         final end = raf.lengthSync();

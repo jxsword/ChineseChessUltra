@@ -163,5 +163,26 @@ void main() {
       final index = PgnParser.scanGameOffsets(pgnFile.path, maxGames: 1);
       expect(index, hasLength(1));
     });
+
+    test('超长行按 moves 行处理，pending 不再无限累积（P2-5）', () {
+      // 9MB 无换行的单行畸形文件（超过 8MB 阈值）+ 一个正常局。
+      final longFile = File('${tmp.path}${Platform.pathSeparator}long.pgn');
+      longFile.writeAsStringSync(
+        '${'a' * (9 << 20)}\n'
+        '[Event "超长行后的一局"]\n'
+        '[Red "红"]\n'
+        '\n'
+        '1. 炮二平五\n',
+        encoding: utf8,
+      );
+
+      final index = PgnParser.scanGameOffsets(longFile.path);
+
+      // 超长行被计为 moves 行（gameStart=0），随后标签行开启第二局。
+      expect(index, hasLength(2));
+      expect(index[0].offset, 0);
+      expect(index[1].event, '超长行后的一局');
+      expect(index[1].red, '红');
+    });
   });
 }

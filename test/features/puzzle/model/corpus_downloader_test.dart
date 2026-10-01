@@ -50,7 +50,31 @@ void main() {
       expect(CorpusPaths.isDownloadUrlAllowed('https://[fd00::1]/x.zip'),
           isFalse,);
       expect(CorpusPaths.isDownloadUrlAllowed('https://nas.local/x.zip'),
-          isFalse,);
+          isFalse);
+    });
+
+    test('拒绝 IPv4-mapped IPv6 / 整数 IP / 八进制分段等绕过形式（P2-1）', () {
+      // IPv4-mapped IPv6（::ffff:0:0/96）还原成 v4 判段。
+      expect(CorpusPaths.isDownloadUrlAllowed('https://[::ffff:127.0.0.1]/x.zip'),
+          isFalse);
+      expect(CorpusPaths.isDownloadUrlAllowed('https://[::ffff:7f00:1]/x.zip'),
+          isFalse);
+      expect(CorpusPaths.isDownloadUrlAllowed('https://[::ffff:10.0.0.1]/x.zip'),
+          isFalse);
+      // 纯十进制 / 十六进制整数 IP。
+      expect(CorpusPaths.isDownloadUrlAllowed('https://2130706433/x.zip'),
+          isFalse);
+      expect(CorpusPaths.isDownloadUrlAllowed('https://0x7f000001/x.zip'),
+          isFalse);
+      // 超出 v4 范围的整数 host。
+      expect(CorpusPaths.isDownloadUrlAllowed('https://2887685888/x.zip'),
+          isFalse);
+      // 八进制分段（前导 0 歧义）。
+      expect(CorpusPaths.isDownloadUrlAllowed('https://0177.0.0.1/x.zip'),
+          isFalse);
+      // mapped 公网地址仍放行（行为对齐：校验的是内网/保留段）。
+      expect(CorpusPaths.isDownloadUrlAllowed('https://[::ffff:8.8.8.8]/x.zip'),
+          isTrue);
     });
   });
 

@@ -61,6 +61,9 @@ start "" /b "E:\dev\android-sdk\emulator\emulator.exe" -avd Pixel_7_API34 ^
   -http-proxy socks5://10.0.2.2:10808
 ```
 
+> 其余启动参数（快照/GPU/端口/`-writable-system` 等）与日常管理命令见
+> `docs/android_emulator_cli_and_root.md`。
+
 ## 3. 方案 B：模拟器 Extended Controls 图形界面
 
 模拟器窗口右侧工具条 `…`（Extended Controls）→ **Settings → Proxy**：

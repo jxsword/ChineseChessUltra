@@ -8,9 +8,9 @@
 library;
 
 import 'dart:io';
-import 'dart:typed_data';
+import 'dart:isolate';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:logging/logging.dart';
 
 import 'corpus_paths.dart';
@@ -36,7 +36,11 @@ class CorpusDownloader {
     await targetDir.create(recursive: true);
     final zipFile = await _download(url, targetDir, onProgress);
     try {
-      final count = extractZip(zipFile, targetDir);
+      // 解压放入独立 isolate：245MB 级解压在 UI isolate 会造成
+      // Android ANR / 低内存设备 OOM（P0-2）。
+      final count = await Isolate.run(
+        () => _extractZipInIsolate(zipFile.path, targetDir.path),
+      );
       _log.info('语料解压完成：$count 个文件 → ${targetDir.path}');
       return count;
     } finally {
@@ -103,42 +107,53 @@ class CorpusDownloader {
     }
   }
 
-  /// 解压 zip 到 [targetDir]，逐条目做词法路径校验（防 zip-slip）。
   /// 解压本地 zip 文件到 [targetDir]（含 zip-slip 防护），返回解压文件数。
+  ///
+  /// 用 [InputFileStream] 流式打开 + 条目内容按需惰性解码，
+  /// 避免 readAsBytesSync 全量读入导致 zip + 解压内容同时驻留内存。
+  /// 供 [_extractZipInIsolate] 在后台 isolate 中调用，也可直接单测。
   static int extractZip(File zipFile, Directory targetDir) {
-    final Uint8List bytes = zipFile.readAsBytesSync();
-    final archive = ZipDecoder().decodeBytes(bytes);
-    var count = 0;
-    for (final entry in archive) {
-      final name = entry.name.replaceAll('\\', '/');
-      // 符号链接条目一律拒绝（archive 用 mode 高位或 nameOfLinkedFile 表示）；
-      // 绝对路径与 .. / 盘符段一律拒绝。
-      final isSymlink = (entry.mode & 0xF000) == 0xA000 ||
-          entry.nameOfLinkedFile.isNotEmpty;
-      if (isSymlink ||
-          name.startsWith('/') ||
-          name.split('/').contains('..')) {
-        _log.warning('跳过可疑 zip 条目: ${entry.name}');
-        continue;
+    final input = InputFileStream(zipFile.path);
+    try {
+      final archive = ZipDecoder().decodeBuffer(input);
+      var count = 0;
+      for (final entry in archive) {
+        final name = entry.name.replaceAll('\\', '/');
+        // 符号链接条目一律拒绝（archive 用 mode 高位或 nameOfLinkedFile 表示）；
+        // 绝对路径与 .. / 盘符段一律拒绝。
+        final isSymlink = (entry.mode & 0xF000) == 0xA000 ||
+            entry.nameOfLinkedFile.isNotEmpty;
+        if (isSymlink ||
+            name.startsWith('/') ||
+            name.split('/').contains('..')) {
+          _log.warning('跳过可疑 zip 条目: ${entry.name}');
+          continue;
+        }
+        final segments = name.split('/').where((s) => s.isNotEmpty).toList();
+        if (segments.isEmpty ||
+            segments.any((s) => s.contains(':') || s == '.')) {
+          _log.warning('跳过可疑 zip 条目: ${entry.name}');
+          continue;
+        }
+        // 词法重组（已拒绝 .. / 盘符，不可能逃出目标目录）。
+        final outPath =
+            '${targetDir.path}${Platform.pathSeparator}${segments.join(Platform.pathSeparator)}';
+        if (entry.isFile) {
+          final outFile = File(outPath);
+          outFile.parent.createSync(recursive: true);
+          outFile.writeAsBytesSync(entry.content as List<int>);
+          count += 1;
+        } else {
+          Directory(outPath).createSync(recursive: true);
+        }
       }
-      final segments = name.split('/').where((s) => s.isNotEmpty).toList();
-      if (segments.isEmpty ||
-          segments.any((s) => s.contains(':') || s == '.')) {
-        _log.warning('跳过可疑 zip 条目: ${entry.name}');
-        continue;
-      }
-      // 词法重组（已拒绝 .. / 盘符，不可能逃出目标目录）。
-      final outPath =
-          '${targetDir.path}${Platform.pathSeparator}${segments.join(Platform.pathSeparator)}';
-      if (entry.isFile) {
-        final outFile = File(outPath);
-        outFile.parent.createSync(recursive: true);
-        outFile.writeAsBytesSync(entry.content as List<int>);
-        count += 1;
-      } else {
-        Directory(outPath).createSync(recursive: true);
-      }
+      return count;
+    } finally {
+      input.closeSync();
     }
-    return count;
   }
+
+  /// isolate 入口：仅传路径字符串，避免跨 isolate 传递文件句柄。
+  static int _extractZipInIsolate(String zipPath, String targetPath) =>
+      extractZip(File(zipPath), Directory(targetPath));
 }

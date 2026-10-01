@@ -39,6 +39,9 @@ class HumanVsAiPage extends ConsumerStatefulWidget {
 class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
   bool _isAiThinking = false;
 
+  /// 全局棋盘 VM 引用（dispose 中需解锁，避免再使用 ref）。
+  late final BoardViewModel _boardViewModel;
+
   /// AI 难度（1-5，对应内置引擎搜索强度）。
   int _difficulty = 3;
 
@@ -66,8 +69,18 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
   }
 
   @override
+  void dispose() {
+    _gameSeq++; // 作废仍在计算中的 AI 应手
+    // AI 思考中离开页面时锁尚未释放，必须在此兜底解锁，
+    // 否则全局输入锁泄漏导致棋盘永久不可点击。
+    _boardViewModel.unlockInput();
+    super.dispose();
+  }
+
+  @override
   void initState() {
     super.initState();
+    _boardViewModel = ref.read(boardViewModelProvider.notifier);
     final initialFen = widget.initialFen;
     if (initialFen != null) {
       // Riverpod 不允许在 widget 树构建期间修改 provider，延后到首帧后。
@@ -437,7 +450,12 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
       bestMove = ChessAi.findBestMove(boardSnapshot, difficulty: difficulty);
     }
 
-    if (!mounted || seq != _gameSeq) return; // 页面已离开或对局已重开/悔棋
+    if (!mounted || seq != _gameSeq) {
+      // 页面已离开或对局已重开/悔棋：无条件解锁，避免全局输入锁泄漏
+      // （重开路径本就会复位锁，此处多解一次无害）。
+      viewModel.unlockInput();
+      return;
+    }
 
     setState(() => _isAiThinking = false);
     viewModel.unlockInput();

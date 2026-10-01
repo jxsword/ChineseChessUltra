@@ -40,12 +40,26 @@ class _AiVsAiPageState extends ConsumerState<AiVsAiPage> {
 
   Timer? _nextMoveTimer;
 
+  /// 全局棋盘 VM 引用（dispose 中需解锁，避免再使用 ref）。
+  late final BoardViewModel _boardViewModel;
+
   static const _difficultyNames = {1: '初级', 2: '中级', 3: '高级', 4: '专家', 5: '大师'};
+
+  @override
+  void initState() {
+    super.initState();
+    _boardViewModel = ref.read(boardViewModelProvider.notifier);
+  }
 
   @override
   void dispose() {
     _seq++; // 作废仍在计算中的 AI 应手
     _nextMoveTimer?.cancel();
+    // 仅运行态需要兜底解锁；暂停态的锁是故意保留的（恢复对战时复用），
+    // 停止/终局路径已在 _stopBattle/_finishWithResult 中解锁。
+    if (_isRunning && !_isPaused) {
+      _boardViewModel.unlockInput();
+    }
     super.dispose();
   }
 

@@ -119,5 +119,43 @@ void main() {
           File('${tmp.path}${Platform.pathSeparator}escape.txt').existsSync(),
           isFalse);
     });
+
+    test('zip-slip 探针：反斜杠归一、嵌套 ..、UNC、符号链接全拦截', () {
+      final symlink = ArchiveFile('link/evil.xqf', 4, utf8.encode('evil'))
+        ..mode = 0xA1FF
+        ..nameOfLinkedFile = '../../../outside.txt';
+      final archive = Archive()
+        ..addFile(ArchiveFile('..\\escape.txt', 4, utf8.encode('evil')))
+        ..addFile(ArchiveFile('a/../../escape2.txt', 5, utf8.encode('evil2')))
+        ..addFile(
+            ArchiveFile(r'\\evil\share\f.txt', 5, utf8.encode('evil3')))
+        ..addFile(symlink)
+        ..addFile(ArchiveFile('ok.txt', 2, utf8.encode('hi')));
+
+      final zip =
+          File('${tmp.path}${Platform.pathSeparator}probes.zip');
+      zip.writeAsBytesSync(ZipEncoder().encode(archive)!);
+      final target = Directory('${tmp.path}${Platform.pathSeparator}corpus');
+
+      final count = CorpusDownloader.extractZip(zip, target);
+
+      expect(count, 1, reason: '只允许 ok.txt 落地');
+      expect(
+          File('${target.path}${Platform.pathSeparator}ok.txt')
+              .readAsStringSync(),
+          'hi');
+      // 逃逸向量均未产生目标目录之外的文件。
+      expect(
+          File('${tmp.path}${Platform.pathSeparator}escape.txt').existsSync(),
+          isFalse);
+      expect(
+          File('${tmp.path}${Platform.pathSeparator}escape2.txt').existsSync(),
+          isFalse);
+      expect(Directory('${tmp.path}${Platform.pathSeparator}evil').existsSync(),
+          isFalse);
+      expect(
+          File('${target.path}${Platform.pathSeparator}link').existsSync(),
+          isFalse);
+    });
   });
 }

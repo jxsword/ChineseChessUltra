@@ -84,14 +84,29 @@ export PUB_HOSTED_URL=https://pub.flutter-io.cn
 EOF
 source ~/.bashrc
 
-# 下载稳定版 linux tarball（flutter-io.cn 首页取最新版本号）
+# 下载稳定版 linux tarball（<version> 取法见下方说明）
 cd ~/development
-curl -O https://storage.flutter-io.cn/flutter_infra_release/releases/stable/linux/flutter_linux_<version>-stable.tar.xz
-tar xf flutter_linux_<version>-stable.tar.xz
+curl -O https://storage.flutter-io.cn/flutter_infra_release/releases/stable/linux/flutter_linux_3.44.2-stable.tar.xz
+tar xf flutter_linux_3.44.2-stable.tar.xz
 echo 'export PATH="$HOME/development/flutter/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 
 flutter doctor   # 目标：Linux toolchain 一行无红
 ```
+
+**`<version>` 取法**（三选一，约 1.5GB/个，注意磁盘与流量）：
+
+1. **与主机 SDK 对齐（推荐）**：在 Windows 主机跑 `flutter --version`，VM 装同一
+   版本，避免两端行为差异。本机当前为 **3.44.2**（文档即按此写死）。
+2. **查镜像的版本清单**（`current_release.stable` 即最新稳定版）：
+
+   ```bash
+   curl -s https://storage.flutter-io.cn/flutter_infra_release/releases/releases_linux.json \
+     | grep -B2 -A4 '"hash"' | grep -o '"version": "[^"]*"' | head -5
+   # 或直接浏览 https://flutter-io.cn 首页展示的最新 stable 版本号
+   ```
+
+3. **macOS 同理**：URL 中 `linux` 换 `macos`，文件名按 CPU 选
+   `flutter_macos_arm64_*`（Apple Silicon / VM 常见）或 `flutter_macos_x64_*`。
 
 ### 2.4 获取代码与运行
 

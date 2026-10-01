@@ -37,6 +37,10 @@ dependencies:
   shared_preferences: ^2.2.0
   archive: ^3.6.0
 
+  # 大模型对战（三三）：OpenAI 兼容 HTTP 调用 + API Key 安全存储
+  http: ^1.2.0
+  flutter_secure_storage: ^9.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

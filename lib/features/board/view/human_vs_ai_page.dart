@@ -10,6 +10,7 @@ import '../model/board_state.dart';
 import '../model/move.dart';
 import '../model/piece.dart';
 import '../viewmodel/board_vm.dart';
+import '../viewmodel/game_auto_save.dart';
 import '../viewmodel/game_restore.dart';
 import '../view/widgets/board_widget.dart';
 import '../view/widgets/side_panel.dart';
@@ -42,6 +43,9 @@ class HumanVsAiPage extends ConsumerStatefulWidget {
 class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
   bool _isAiThinking = false;
 
+  /// 对局自动保存：离开页面/应用切后台时按全局开关落存档（残局不参与）。
+  late final GameAutoSave _autoSave;
+
   /// 全局棋盘 VM 引用（dispose 中需解锁，避免再使用 ref）。
   late final BoardViewModel _boardViewModel;
 
@@ -73,6 +77,7 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
 
   @override
   void dispose() {
+    _autoSave.dispose(); // 离开页面：按全局"自动保存"开关触发棋局保存
     _gameSeq++; // 作废仍在计算中的 AI 应手
     // AI 思考中离开页面时锁尚未释放，必须在此兜底解锁，
     // 否则全局输入锁泄漏导致棋盘永久不可点击。
@@ -84,6 +89,11 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
   void initState() {
     super.initState();
     _boardViewModel = ref.read(boardViewModelProvider.notifier);
+    _autoSave = GameAutoSave(
+      mode: GameMode.humanVsAi,
+      viewModel: _boardViewModel,
+      canSave: () => widget.initialFen == null, // 残局闯关不参与保存
+    );
     final initialFen = widget.initialFen;
     // Riverpod 不允许在 widget 树构建期间修改 provider，延后到首帧后。
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -118,6 +128,7 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
       viewModel: _boardViewModel,
       mode: GameMode.humanVsAi,
     );
+    _autoSave.adopt(repo);
     if (!mounted || outcome != RestoreOutcome.restored) return;
     if (_isAiTurn()) {
       _triggerAiMove();

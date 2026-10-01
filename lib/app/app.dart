@@ -6,15 +6,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/board/view/board_page.dart';
 import '../features/puzzle/view/puzzle_list_page.dart';
 import '../features/board/view/human_vs_ai_page.dart';
-import '../features/board/view/ai_vs_ai_page.dart';
+import '../features/board/view/human_vs_llm_page.dart';
+import '../features/board/view/llm_vs_llm_page.dart';
 import '../features/board/model/board.dart';
 import '../features/board/model/board_state.dart';
 import '../features/board/viewmodel/board_vm.dart';
+import '../features/board/viewmodel/game_auto_save.dart';
 import '../features/board/viewmodel/game_restore.dart';
 import '../features/board/view/widgets/board_widget.dart';
 import '../features/board/view/widgets/side_panel.dart';
 import '../features/storage/game_mode.dart';
 import '../features/storage/repository.dart';
+import '../features/settings/global_settings.dart';
 
 /// 应用根 Widget。
 class ChineseChessApp extends StatelessWidget {
@@ -35,22 +38,42 @@ class ChineseChessApp extends StatelessWidget {
   }
 }
 
-/// 主导航页面（二期）。
+/// 主导航页面（二期 + 三三全局设置入口）。
 ///
 /// 功能：
 /// - 提供主要功能入口
 /// - 残局选关
-/// - 人机对战
-/// - 机器对战
+/// - 人机对战（内置 AI / 大模型）
+/// - 大模型对战
 /// - 双人对弈
-class MainNavigationPage extends StatelessWidget {
+/// - 全局设置（自动保存棋局开关）
+class MainNavigationPage extends StatefulWidget {
   const MainNavigationPage({super.key});
+
+  @override
+  State<MainNavigationPage> createState() => _MainNavigationPageState();
+}
+
+class _MainNavigationPageState extends State<MainNavigationPage> {
+  @override
+  void initState() {
+    super.initState();
+    // 启动即加载持久化设置，棋盘页退出触发保存时读到的是真实开关值。
+    GlobalSettings.instance.load();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('中国象棋 Ultra'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => _showGlobalSettings(context),
+            tooltip: '全局设置',
+          ),
+        ],
       ),
       body: Center(
         child: Column(
@@ -82,12 +105,24 @@ class MainNavigationPage extends StatelessWidget {
             const SizedBox(height: 16),
             _buildNavigationButton(
               context,
-              '机器对战',
-              const Icon(Icons.auto_mode),
+              '人机对战（大模型）',
+              const Icon(Icons.psychology),
               () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => const AiVsAiPage(),
+                  builder: (context) => const HumanVsLlmPage(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildNavigationButton(
+              context,
+              '大模型对战',
+              const Icon(Icons.smart_toy),
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const LlmVsLlmPage(),
                 ),
               ),
             ),
@@ -106,6 +141,52 @@ class MainNavigationPage extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// 全局设置弹窗：自动保存开关（改动即持久化）。
+  Future<void> _showGlobalSettings(BuildContext context) async {
+    // 打开前加载持久化值，避免展示进程内过期缓存。
+    await GlobalSettings.instance.load();
+    if (!context.mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '全局设置',
+                      style:
+                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    SwitchListTile(
+                      title: const Text('自动保存棋局'),
+                      subtitle: const Text(
+                        '离开棋盘或应用切后台时自动保存当前棋局；'
+                        '关闭后仅点击棋盘页"保存棋局"按钮才保存。',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                      value: GlobalSettings.instance.autoSave,
+                      contentPadding: EdgeInsets.zero,
+                      onChanged: (value) {
+                        GlobalSettings.instance.setAutoSave(value);
+                        setSheetState(() {});
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -149,6 +230,9 @@ class _HumanVsHumanGamePageState extends ConsumerState<HumanVsHumanGamePage> {
   Timer? _gameTimer;
   int _elapsedSeconds = 0;
 
+  /// 对局自动保存：离开页面/应用切后台时按全局开关落存档。
+  GameAutoSave? _autoSave;
+
   @override
   void initState() {
     super.initState();
@@ -163,18 +247,23 @@ class _HumanVsHumanGamePageState extends ConsumerState<HumanVsHumanGamePage> {
 
   /// 恢复双人对弈模式存档；无存档则开新局。
   Future<void> _restoreOrNewGame() async {
+    final viewModel = ref.read(boardViewModelProvider.notifier);
     final GameRepository repo;
     try {
       repo = await ref.read(gameRepositoryProvider.future);
     } on Object {
       // 存储不可用（如 path_provider 异常）：退化为新局。
-      if (mounted) ref.read(boardViewModelProvider.notifier).newGame();
+      if (mounted) viewModel.newGame();
       return;
     }
     if (!mounted) return;
+    _autoSave = GameAutoSave(
+      mode: GameMode.humanVsHuman,
+      viewModel: viewModel,
+    )..adopt(repo);
     await restoreOrNewGame(
       repo: repo,
-      viewModel: ref.read(boardViewModelProvider.notifier),
+      viewModel: viewModel,
       mode: GameMode.humanVsHuman,
     );
   }
@@ -182,6 +271,7 @@ class _HumanVsHumanGamePageState extends ConsumerState<HumanVsHumanGamePage> {
   @override
   void dispose() {
     _gameTimer?.cancel();
+    _autoSave?.dispose(); // 离开页面：按全局"自动保存"开关触发棋局保存
     super.dispose();
   }
 

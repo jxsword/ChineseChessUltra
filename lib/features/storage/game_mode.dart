@@ -11,4 +11,10 @@ enum GameMode {
 
   /// 机器对战（AI 对 AI）。
   aiVsAi,
+
+  /// 人机对战（大模型），三期。
+  humanVsLlm,
+
+  /// 大模型对战，三期。
+  llmVsLlm,
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../model/board_state.dart';
 import '../../model/move.dart';
+import '../../model/move_notation.dart';
 import '../../model/piece.dart';
 import '../../viewmodel/board_vm.dart';
 

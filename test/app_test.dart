@@ -27,10 +27,11 @@ void main() {
 
     // 标题
     expect(find.text('中国象棋 Ultra'), findsOneWidget);
-    // 主导航入口（二期主导航页）
+    // 主导航入口（二期主导航页 + 三三大模型入口）
     expect(find.text('残局选关'), findsOneWidget);
     expect(find.text('人机对战'), findsOneWidget);
-    expect(find.text('机器对战'), findsOneWidget);
+    expect(find.text('人机对战（大模型）'), findsOneWidget);
+    expect(find.text('大模型对战'), findsOneWidget);
     expect(find.text('双人对弈'), findsOneWidget);
 
     dao.dispose();
@@ -70,7 +71,7 @@ void main() {
     expect(container.read(boardViewModelProvider).fen, savedFen);
   });
 
-  testWidgets('机器对战页无存档进入时重置全局棋盘（消除内存残留）', (tester) async {
+  testWidgets('大模型对战页无存档进入时重置全局棋盘（消除内存残留）', (tester) async {
     final dao = GameDao.inMemory();
     final repo = GameRepository(dao);
 
@@ -97,9 +98,9 @@ void main() {
       isNot(initialFen),
     );
 
-    await tester.tap(find.text('机器对战'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.tap(find.text('大模型对战'));
+    // 等待路由动画与页面 initState（postFrame 新局）完成。
+    await tester.pumpAndSettle(const Duration(milliseconds: 100));
 
     // 无存档进入后应重置为初始局面，而不是残留上一局。
     expect(container.read(boardViewModelProvider).fen, initialFen);

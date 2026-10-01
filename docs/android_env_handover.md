@@ -69,6 +69,10 @@ setx ANDROID_HOME "E:\dev\android-sdk"
 
 ## 4. 常用命令速查
 
+> 模拟器命令行管理、控制台、快照与 root/remount 的完整说明见
+> `docs/android_emulator_cli_and_root.md`；代理配置见
+> `docs/android_emulator_proxy.md`。
+
 ```bash
 # 环境自检（应全 √）
 export JAVA_HOME="D:\scoop\apps\temurin17-jdk\current"

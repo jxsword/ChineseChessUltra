@@ -275,3 +275,67 @@
   重建仓库控制体积；更新语料 = qp 目录 push + 重发 Release（URL 不变）。
 - 注意：本机 GH_TOKEN 已轮换（setx 写入用户环境变量），重启 ZCode 后新会话
   自动生效；旧 fine-grained token 建议在 GitHub 上撤销。
+
+### Android 工具链修复与模拟器冒烟验证（2026-10-01 已完成）
+
+> 待办"Android 真机/模拟器验证下载-解压-扫描全链路"就此关闭。验证环境：
+> Windows 11 + Flutter 3.44.2 + Android SDK（无 Android Studio，纯命令行），
+> 模拟器 Pixel_7_API34（system-images;android-34;google_apis;x86_64，WHPX 加速）。
+
+**工具链修复记录（flutter doctor Android toolchain X → √）：**
+
+1. 本机原无 Android SDK（ANDROID_HOME 未设，无 adb/sdkmanager）。安装位置
+   `E:\dev\android-sdk`，加入 `flutter config --android-sdk`。
+2. JDK： scoop 安装 temurin17-jdk 17.0.20（原机 JDK 11 不满足 Gradle 9.1/AGP 9.0.1）。
+3. cmdline-tools：`commandlinetools-win-11076708_latest.zip` 解压至
+   `cmdline-tools/latest/`（腾讯镜像可直下；sdkmanager 走腾讯镜像代理模式
+   解析不到包，改用本地 socks 代理：`JDK_JAVA_OPTIONS="-DsocksProxyHost=127.0.0.1
+   -DsocksProxyPort=10808"` 后正常）。
+4. 组件：platform-tools / platforms;android-36（Flutter 3.44 默认 compileSdk=36）/
+   build-tools;36.0.0 / emulator / system-images;android-34;google_apis;x86_64。
+5. `yes | sdkmanager --licenses` + `flutter doctor --android-licenses` 全部接受。
+
+**构建修复（flutter build apk --release）：**
+
+- Kotlin 增量编译缓存关闭失败（"Could not close incremental caches"，多个插件
+  模块稳定复现，Windows 文件锁典型症状）→ `android/gradle.properties` 加
+  `kotlin.incremental=false`（保留，注释标明缘由）。
+- file_picker 8.3.7 自声明 compileSdk 34，低于 flutter_plugin_android_lifecycle
+  要求的 36，AAR metadata 校验失败 → `android/build.gradle.kts` 对全部子项目
+  afterEvaluate 统一抬升 compileSdk 到 36（仅 Android 平台侧，不影响 Dart 代码；
+  升级 file_picker 到 9/10.x 有破坏性 API 变更，暂不采用）。
+- 产物：`build/app/outputs/flutter-apk/app-release.apk`（57.8MB）。
+
+**冒烟清单（adb install + 真机操作模拟，全部通过）：**
+
+| 项 | 结果 |
+|----|------|
+| a) 主导航四入口（残局选关/人机对战/机器对战/双人对弈） | ✅ |
+| b) 人机对战：走子（炮二平五）、AI 应手（炮2平5）、悔棋（整回合撤销）、新游戏 | ✅ |
+| c) 棋谱库缺失引导：显示"未找到棋谱语料"+ 路径 /storage/emulated/0/Android/data/com.ssy.chinesechess.chinese_chess_ultra/files/corpus + 下载按钮 | ✅ |
+| d) 下载棋谱库：进度 → 解压 → 自动重载出分类（ChessQ-gamebooks / XQF-象棋谱大全 / PGN·WXF-41743 / PGN·dpxq-99813） | ✅ |
+| e) 勾选"仅看残局"→ 搜索"001"打开适情雅趣"第001局 气吞关右"→ 破解演示播放正常（棋盘渲染/走子/序列推进） | ✅ |
+| f) "从残局始盘开始人机对战"（执红）：始盘与 FEN 一致、AI 应手正常（马7进5 吃弃车） | ✅ |
+| g) 终局对话框："闯关失败"+ 黑方胜横幅 + 重试/返回 正常弹出（通关侧同一代码路径，未单独实测） | ✅ |
+| h) 语料落位：files/corpus/ 下 CGLemon-PGN、ChessQ-gamebooks、XQF-象棋谱大全、README.md 共约 245MB | ✅ |
+
+**环境注意（非代码 bug）：**
+
+- 模拟器/国内真机直连 `github.com` Release 附件大概率不通（DNS 污染/断连），
+  首次下载静默失败。模拟器验证时用 `-http-proxy socks5://10.0.2.2:10808` 启动；
+  下载约 45.8MB @ ~110KB/s，全程 ~8 分钟。
+- 下载按钮文案"约 150MB"与实际压缩包 45.8MB 不符（疑指解压后 ~250MB），建议
+  改为"压缩包约 46MB / 解压约 250MB"。
+
+**发现的问题（待确认后修复）：**
+
+1. **空 corpus 目录导致死胡同（中）**：目录存在但为空时（如上次下载失败残留），
+   `corpus_browser_vm.load()` 仅以 `repo.exists` 判定，页面进入"请选择分类"空态，
+   不再显示下载引导。建议：`exists && scanCategories().isNotEmpty` 才算有语料，
+   或空分类时同样提供下载入口。
+2. **残局终局状态泄漏到普通人机对战（中）**：残局对局结束返回主页再进"人机对战"，
+   棋盘残留残局局面与"黑方胜！"横幅（两页共用 `boardViewModelProvider`，普通
+   模式进入时未 newGame）。建议：`human_vs_ai_page` initState 且 `initialFen==null`
+   时重置棋盘 VM。
+3. **下载失败提示弱（低）**：失败仅 SnackBar 一闪即逝，且残留空目录会触发问题 1。
+   建议失败时在对话框内展示错误并提供重试。

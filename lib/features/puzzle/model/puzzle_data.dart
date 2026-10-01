@@ -61,6 +61,33 @@ class ParsedPuzzle {
     return 5;
   }
 
+  /// 标准开局盘面部分（用于区分全局对局与残局/排局）。
+  static const String _standardInitialBoard =
+      'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR';
+
+  /// 是否为残局/排局题（区别于全局对局）。
+  ///
+  /// 语料中混有整局对局（initialFen=标准开局、主线=整局走法）与残局题
+  /// （initialFen=残局盘面、主线=破解步骤），UI 需按此区分措辞与功能。
+  /// 判定顺序：来源分类名关键词优先（"让子局"盘面非标准开局但属对局），
+  /// 否则按初始盘面是否为标准开局。
+  bool get isEndgamePuzzle {
+    final src = source;
+    if (src.contains('残局') || src.contains('排局') || src.contains('杀势')) {
+      return true;
+    }
+    const fullGameKeywords = [
+      '全局', '大师', '比赛', '布局', '中局', '名局', '让子',
+    ];
+    for (final keyword in fullGameKeywords) {
+      if (src.contains(keyword)) return false;
+    }
+    return initialFen.split(' ').first != _standardInitialBoard;
+  }
+
+  /// 类型标签文案（"残局题" / "全局对局"）。
+  String get kindLabel => isEndgamePuzzle ? '残局题' : '全局对局';
+
   /// 是否有破解走法。
   bool get hasSolution => solutionMoves != null && solutionMoves!.isNotEmpty;
 

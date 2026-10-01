@@ -126,6 +126,9 @@ class CorpusRepository {
   }
 
   /// 列出 XQF 分类下的全部棋谱文件（不做解析）。
+  ///
+  /// 条目的 [CorpusEntry.source] 取相对分类目录的前两级子目录
+  /// （如"残局/适情雅趣"），供解析结果标注来源与区分全局对局/残局题。
   List<CorpusEntry> listXqfEntries(CorpusCategory category) {
     assert(category.kind == CorpusKind.xqfDirectory);
     final dir = Directory(category.path);
@@ -138,11 +141,23 @@ class CorpusRepository {
       entries.add(CorpusEntry(
         path: f.path,
         category: category.name,
-        source: category.source,
+        source: _sourceOf(category, f.path),
       ));
     }
     entries.sort((a, b) => a.displayName.compareTo(b.displayName));
     return entries;
+  }
+
+  /// 从文件相对路径推导来源标注（前两级子目录）。
+  String _sourceOf(CorpusCategory category, String filePath) {
+    final rel = filePath.substring(category.path.length);
+    final parts = rel
+        .split(Platform.pathSeparator)
+        .where((p) => p.isNotEmpty)
+        .toList();
+    parts.removeLast(); // 文件名
+    parts.removeWhere((p) => p == 'gamebooks'); // ChessQ 的通用目录层
+    return parts.take(2).join('/');
   }
 
   /// 解析单个 XQF 文件（含门面重放校验）。
@@ -155,13 +170,14 @@ class CorpusRepository {
 
   /// 批量解析 XQF 文件（后台 isolate 中执行，避免阻塞 UI）。
   ///
-  /// 返回与 [paths] 等长的结果列表，失败位为 null。
+  /// 返回与 [entries] 等长的结果列表，失败位为 null；来源标注逐条目携带
+  /// （同分类下不同子目录的来源不同）。
   static Future<List<ParsedPuzzle?>> parseXqfBatch(
-    List<String> paths,
-    String source,
+    List<CorpusEntry> entries,
   ) {
     return Isolate.run(() => [
-          for (final path in paths) parseXqfFile(path, source: source),
+          for (final e in entries)
+            parseXqfFile(e.path, source: e.source),
         ]);
   }
 

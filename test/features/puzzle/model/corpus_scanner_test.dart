@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chinese_chess_ultra/features/puzzle/model/corpus_scanner.dart';
 import 'package:chinese_chess_ultra/features/puzzle/model/puzzle_data.dart';
+import 'package:chinese_chess_ultra/features/puzzle/model/puzzle_data.dart';
 
 /// 语料联接根目录（mklink /J corpus E:\ssy_proj\qp）。
 const corpusRoot = 'corpus';
@@ -27,15 +28,17 @@ void main() {
 
     setUp(() {
       tmp = Directory.systemTemp.createTempSync('corpus_test');
-      // 构造: XQF测试谱/残局/a.xqf, XQF测试谱/残局/子/b.xqf, _ref/c.xqf
+      // 构造: XQF测试谱/残局/适情雅趣/a.xqf, XQF测试谱/全局/子/b.xqf, _ref/c.xqf
       final d1 = Directory('${tmp.path}${Platform.pathSeparator}XQF测试谱'
-          '${Platform.pathSeparator}残局')
+          '${Platform.pathSeparator}残局${Platform.pathSeparator}适情雅趣')
         ..createSync(recursive: true);
       File('${d1.path}${Platform.pathSeparator}a.xqf').writeAsBytesSync(
           List.filled(1100, 0));
-      Directory('${d1.path}${Platform.pathSeparator}子').createSync();
-      File('${d1.path}${Platform.pathSeparator}子'
-          '${Platform.pathSeparator}b.XQF').writeAsBytesSync([]);
+      final d2 = Directory('${tmp.path}${Platform.pathSeparator}XQF测试谱'
+          '${Platform.pathSeparator}全局'
+          '${Platform.pathSeparator}子')
+        ..createSync(recursive: true);
+      File('${d2.path}${Platform.pathSeparator}b.XQF').writeAsBytesSync([]);
       Directory('${tmp.path}${Platform.pathSeparator}_ref').createSync();
       File('${tmp.path}${Platform.pathSeparator}_ref'
           '${Platform.pathSeparator}c.xqf').writeAsBytesSync([]);
@@ -53,10 +56,12 @@ void main() {
       expect(categories.single.source, 'XQF测试谱');
     });
 
-    test('listXqfEntries 递归列出并按名称排序', () {
+    test('listXqfEntries 递归列出并按名称排序，source 取子分类', () {
       final repo = CorpusRepository(root: tmp);
       final entries = repo.listXqfEntries(repo.scanCategories().single);
       expect(entries.map((e) => e.displayName), ['a', 'b']);
+      expect(entries[0].source, '残局/适情雅趣');
+      expect(entries[1].source, '全局/子');
     });
 
     test('空目录 / 不存在的目录返回空', () {
@@ -64,6 +69,40 @@ void main() {
           root: Directory('${tmp.path}${Platform.pathSeparator}不存在'));
       expect(repo.exists, isFalse);
       expect(repo.scanCategories(), isEmpty);
+    });
+  });
+
+  group('全局对局 vs 残局题判定', () {
+    ParsedPuzzle makePuzzle(String fen, String source) => ParsedPuzzle(
+          id: 't',
+          initialFen: fen,
+          source: source,
+          format: 'xqf',
+          difficulty: 1,
+        );
+
+    const standardFen =
+        'rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1';
+    const endgameFen = '4ka3/3RaP1n1/6R2/9/4P4/6C2/9/9/2rrp4/c4K3 w - - 0 1';
+
+    test('残局盘面（非标准开局）→ 残局题', () {
+      expect(makePuzzle(endgameFen, '任意来源').isEndgamePuzzle, isTrue);
+    });
+
+    test('标准开局盘面 → 全局对局', () {
+      expect(makePuzzle(standardFen, '导入').isEndgamePuzzle, isFalse);
+    });
+
+    test('来源含"残局/排局/杀势"关键词 → 残局题', () {
+      expect(makePuzzle(standardFen, '残局/适情雅趣').isEndgamePuzzle, isTrue);
+      expect(makePuzzle(standardFen, '象棋残局杀势').isEndgamePuzzle, isTrue);
+      expect(makePuzzle(endgameFen, '残局/江湖八大排局').isEndgamePuzzle, isTrue);
+    });
+
+    test('来源含全局类关键词 → 全局对局（让子局盘面非标准但属对局）', () {
+      expect(makePuzzle(endgameFen, '让子局').isEndgamePuzzle, isFalse);
+      expect(makePuzzle(standardFen, '大师专集').isEndgamePuzzle, isFalse);
+      expect(makePuzzle(standardFen, '布局/顺炮全集').isEndgamePuzzle, isFalse);
     });
   });
 
@@ -99,9 +138,11 @@ void main() {
       print('随机样本: ${entry.displayName} → '
           '${puzzle == null ? "解析失败" : "${puzzle.moves.length} 着"}');
       expect(puzzle, isNotNull);
-      expect(puzzle!.source, 'XQF-象棋谱大全');
+      expect(puzzle!.source, isNotEmpty);
       expect(puzzle.difficulty, greaterThanOrEqualTo(1));
       expect(puzzle.difficulty, lessThanOrEqualTo(5));
+      // ignore: avoid_print
+      print('类型判定: ${puzzle.kindLabel}（来源 ${puzzle.source}）');
     }, skip: !corpusExists);
 
     test('PGN 大文件：索引扫描 + 抽样解析单局', () async {

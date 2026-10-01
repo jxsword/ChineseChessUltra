@@ -33,6 +33,9 @@ class CorpusBrowserState {
 
   final String query;
 
+  /// 仅显示残局/排局题（区别于全局对局）。
+  final bool onlyEndgame;
+
   /// 难度筛选（1-5）；null = 全部。
   final int? difficultyFilter;
 
@@ -46,6 +49,7 @@ class CorpusBrowserState {
     this.puzzles = const [],
     this.progress,
     this.query = '',
+    this.onlyEndgame = false,
     this.difficultyFilter,
     this.sortMode = CorpusSortMode.name,
   });
@@ -64,6 +68,9 @@ class CorpusBrowserState {
       final puzzle = puzzles[i];
       if (puzzle == null) continue;
       if (difficultyFilter != null && puzzle.difficulty != difficultyFilter) {
+        continue;
+      }
+      if (onlyEndgame && !puzzle.isEndgamePuzzle) {
         continue;
       }
       if (query.isNotEmpty &&
@@ -96,6 +103,7 @@ class CorpusBrowserState {
     double? progress,
     bool clearProgress = false,
     String? query,
+    bool? onlyEndgame,
     int? difficultyFilter,
     bool clearDifficultyFilter = false,
     CorpusSortMode? sortMode,
@@ -109,6 +117,7 @@ class CorpusBrowserState {
       puzzles: puzzles ?? this.puzzles,
       progress: clearProgress ? null : (progress ?? this.progress),
       query: query ?? this.query,
+      onlyEndgame: onlyEndgame ?? this.onlyEndgame,
       difficultyFilter:
           clearDifficultyFilter ? null : (difficultyFilter ?? this.difficultyFilter),
       sortMode: sortMode ?? this.sortMode,
@@ -170,10 +179,7 @@ class CorpusBrowserViewModel extends Notifier<CorpusBrowserState> {
     for (var start = 0; start < entries.length; start += batchSize) {
       final end = (start + batchSize).clamp(0, entries.length);
       final chunk = entries.sublist(start, end);
-      final results = await CorpusRepository.parseXqfBatch(
-        chunk.map((e) => e.path).toList(),
-        category.source,
-      );
+      final results = await CorpusRepository.parseXqfBatch(chunk);
       if (generation != _generation) return; // 已切换分类，丢弃
       for (var i = 0; i < results.length; i++) {
         puzzles[start + i] = results[i];
@@ -189,6 +195,9 @@ class CorpusBrowserViewModel extends Notifier<CorpusBrowserState> {
   }
 
   void setQuery(String query) => state = state.copyWith(query: query);
+
+  void setOnlyEndgame(bool value) =>
+      state = state.copyWith(onlyEndgame: value);
 
   void setDifficultyFilter(int? difficulty) => state = state.copyWith(
       difficultyFilter: difficulty, clearDifficultyFilter: difficulty == null);

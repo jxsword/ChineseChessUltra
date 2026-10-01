@@ -107,6 +107,13 @@ class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
             ),
           ),
           const SizedBox(width: 8),
+          FilterChip(
+            label: const Text('仅看残局'),
+            selected: state.onlyEndgame,
+            onSelected: (v) =>
+                ref.read(corpusBrowserProvider.notifier).setOnlyEndgame(v),
+          ),
+          const SizedBox(width: 8),
           DropdownButton<int?>(
             value: state.difficultyFilter,
             hint: const Text('等级'),
@@ -182,7 +189,8 @@ class _CorpusBrowserPageState extends ConsumerState<CorpusBrowserPage> {
             overflow: TextOverflow.ellipsis,
           ),
           subtitle: Text(
-            '${entry.category} · ${puzzle.moves.length} 着 · ${puzzle.difficultyText}',
+            '${entry.source} · ${puzzle.kindLabel} · '
+            '${puzzle.moves.length} 着 · ${puzzle.difficultyText}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),

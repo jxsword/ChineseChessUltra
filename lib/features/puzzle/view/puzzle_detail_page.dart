@@ -36,6 +36,9 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
     super.dispose();
   }
 
+  /// 当前棋谱是残局题还是全局对局。
+  bool get _isEndgame => widget.puzzle.isEndgamePuzzle;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -50,9 +53,9 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(text: '残局信息'),
-            Tab(text: '残局演示'),
+          tabs: [
+            Tab(text: _isEndgame ? '残局信息' : '对局信息'),
+            Tab(text: _isEndgame ? '破解演示' : '对局演示'),
           ],
         ),
       ),
@@ -141,15 +144,19 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
                     ],
                   ),
                   const SizedBox(height: 16),
+                  _buildInfoRow('类型', widget.puzzle.kindLabel),
                   _buildInfoRow('来源', widget.puzzle.source ?? '未知'),
                   _buildInfoRow('格式', widget.puzzle.format.toUpperCase()),
                   _buildInfoRow('难度', '${'★' * widget.puzzle.difficulty}${'☆' * (5 - widget.puzzle.difficulty)}'),
-                  _buildInfoRow('走法数量', '${widget.puzzle.moveCount} 步'),
+                  _buildInfoRow(
+                    _isEndgame ? '破解步数' : '整局步数',
+                    '${widget.puzzle.moveCount} 步',
+                  ),
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     onPressed: _startPuzzleGame,
                     icon: const Icon(Icons.sports_esports),
-                    label: const Text('从残局始盘开始人机对战'),
+                    label: Text(_isEndgame ? '从残局始盘开始人机对战' : '对该局进行人机对战'),
                   ),
                   if (widget.puzzle.description != null) ...[
                     const SizedBox(height: 16),
@@ -196,9 +203,9 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    '破解走法',
-                    style: TextStyle(
+                  Text(
+                    _isEndgame ? '破解走法' : '对局走法（主线）',
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
@@ -220,9 +227,9 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
                       }).toList(),
                     )
                   else
-                    const Text(
-                      '暂无破解走法',
-                      style: TextStyle(color: Colors.grey),
+                    Text(
+                      _isEndgame ? '暂无破解走法' : '暂无走法记录',
+                      style: const TextStyle(color: Colors.grey),
                     ),
                 ],
               ),
@@ -394,9 +401,9 @@ class _PuzzleDetailPageState extends ConsumerState<PuzzleDetailPage>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '走法序列',
-              style: TextStyle(
+            Text(
+              _isEndgame ? '破解走法序列' : '对局走法序列',
+              style: const TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),

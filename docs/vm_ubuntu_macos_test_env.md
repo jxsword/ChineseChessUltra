@@ -216,4 +216,4 @@ flutter run -d macos
 | macOS 找不到手动放置的语料 | App Sandbox 容器路径，见 §3.3；或用应用内选目录 |
 | `flutter create` 提示已存在平台 | 正常，create 不覆盖 `android/`/`windows/`/`linux/`/`macos/` |
 | VM 内 pub get 慢 | 确认 `PUB_HOSTED_URL`/`FLUTTER_STORAGE_BASE_URL` 已写入对应 shell 配置 |
-| 切宿主再切回后 Ubuntu 黑屏（SSH 仍可连） | vmwgfx + GNOME Wayland 已知问题：强制 Xorg——**`WaylandEnable=false` 必须写在 `/etc/gdm3/custom.conf` 的 `[daemon]` 段内**（追加到文件末尾会落进 `[debug]` 段而静默失效），改完重启并验证 `echo $XDG_SESSION_TYPE` 输出 x11。仍偶发则关机后在 VMX 加 `mks.enable3d = "FALSE"`（或 VM 设置取消"加速 3D 图形"），代价是 UI 软件渲染变卡 |
+| 切宿主再切回后 Ubuntu 黑屏（SSH 仍可连） | **Ubuntu 26.04 实测结论**：GNOME 50 是 Wayland-only（`/usr/share/xsessions/` 不存在），且 GDM 50 的 `gdm.schemas` 已移除 `WaylandEnable` 键（写了也不生效）——"切 Xorg" 路线在 26.04 上不存在。唯一修复：关 3D 加速——VMX 加 `mks.enable3d = "FALSE"`（或 VM 设置取消"加速 3D 图形"，注意确认改的是这台 VM），完全关机（非挂起）再开机生效；代价是 UI 走 llvmpipe 软件渲染变卡。验证：VM 内 `glxinfo -B` 的 renderer 应为 llvmpipe。SSH 查桌面会话类型用 `loginctl show-session <seat0会话ID> -p Type`（SSH shell 里 `echo $XDG_SESSION_TYPE` 只会输出 tty，不代表桌面） |

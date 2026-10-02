@@ -225,6 +225,11 @@ class LlmMoveSource implements MoveSource {
     }
   }
 
+  /// 一次性的文本问答（残局求解辅助等复用同一条流式通道）。
+  ///
+  /// 与 [nextMove] 的区别：不附加合法清单协议，也不做重试降级。
+  Future<String> chatOnce(String system, String user) => _chat(system, user);
+
   /// 发起一次 chat/completions 请求（流式 SSE），返回回复文本。
   ///
   /// 思考型模型（如 Qwen3 系列）会先输出很长的思维链，非流式短超时必然失败；

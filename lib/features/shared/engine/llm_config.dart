@@ -119,8 +119,19 @@ class LlmConfigStore {
   static const _redSlot = 'llm_config_red';
   static const _blackSlot = 'llm_config_black';
 
+  /// 四期"研究助手模型"槽位：残局求解辅助与棋盘图片识图共用
+  /// （需支持视觉的模型才可识图，纯文本模型仅可做求解辅助）。
+  static const _assistantSlot = 'llm_config_assistant';
+
   Future<LlmConfig> loadRed() => _load(_redSlot);
   Future<LlmConfig> loadBlack() => _load(_blackSlot);
+
+  Future<LlmConfig> loadAssistant() => _load(_assistantSlot);
+
+  Future<void> saveAssistant(LlmConfig config) => _storage.write(
+        key: _assistantSlot,
+        value: config.serialize(),
+      );
 
   Future<void> saveRed(LlmConfig config) => _storage.write(
         key: _redSlot,

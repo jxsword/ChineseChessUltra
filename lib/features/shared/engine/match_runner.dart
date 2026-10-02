@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 
 import '../../board/model/board.dart';
 import '../../board/model/move.dart';
@@ -207,10 +208,18 @@ class MatchRunner {
       // 逐手质量评估：所选着法相对引擎最佳的损失。
       if (evaluateQuality) {
         final snapshot = board.copy();
-        final report = ChessAi.findBestMoveEx(snapshot, depth: qualityDepth);
+        // 评估深度口径：findBestMoveEx(depth) 的根分 = 走 1 步后对手搜
+        // depth-1 层（总深 depth ply）；evaluateMove 须取 depth-1 对齐，
+        // 否则不同深度的分相减会系统性失真。重搜索包 Isolate 避免卡 UI。
+        final evalDepth = (qualityDepth - 1).clamp(1, 6);
+        final report = await Isolate.run(
+          () => ChessAi.findBestMoveEx(snapshot, depth: qualityDepth),
+        );
         if (report != null) {
           evaluatedPlies++;
-          final pickedCp = ChessAi.evaluateMove(snapshot, move, depth: qualityDepth);
+          final pickedCp = await Isolate.run(
+            () => ChessAi.evaluateMove(snapshot, move, depth: evalDepth),
+          );
           final loss = pickedCp == null
               ? MatchRunnerBlunder.mate
               : report.bestCp - pickedCp;
@@ -317,9 +326,11 @@ class MatchRunner {
   }) async {
     final reports = <MatchReport>[];
     for (var i = 0; i < games; i++) {
+      // 奇数局红黑换边，消除执先偏差。
+      final swap = i.isOdd;
       reports.add(await run(
-        red: buildRed(Side.red),
-        black: buildBlack(Side.black),
+        red: swap ? buildBlack(Side.black) : buildRed(Side.red),
+        black: swap ? buildRed(Side.red) : buildBlack(Side.black),
         initial: initial,
         maxPlies: maxPlies,
         evaluateQuality: evaluateQuality,

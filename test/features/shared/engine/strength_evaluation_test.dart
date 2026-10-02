@@ -102,7 +102,9 @@ void main() {
       var total = 0;
       for (final fen in tacticalFens) {
         final board = Board.fromFen(fen);
-        final report = ChessAi.findBestMoveEx(board, depth: 4, topK: 3);
+        // 与被测 source 同深度（advisorDifficulty 1 → 引擎 depth 2），
+        // 否则两个深度的 Top-3 集合可能不一致，断言结构上不成立。
+        final report = ChessAi.findBestMoveEx(board, depth: 2, topK: 3);
         if (report == null) continue;
         final top3 = report.topK.map((e) => encodeMove(e.$1)).toSet();
         total++;

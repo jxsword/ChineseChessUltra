@@ -102,10 +102,12 @@ class LlmGameSettings {
         ? AdvisorMode.values[advisorModeIndex!]
         : AdvisorMode.candidate;
     return LlmGameSettings(
-      timeoutSeconds: timeoutSeconds ?? 60,
-      maxAttempts: maxAttempts ?? 3,
+      // 数值越界一律 clamp：timeout 0 会让每次调用秒失败、
+      // maxAttempts 0 会跳过全部重试。
+      timeoutSeconds: (timeoutSeconds ?? 60).clamp(5, 600),
+      maxAttempts: (maxAttempts ?? 3).clamp(1, 10),
       fallback: fallback,
-      intervalSeconds: intervalSeconds ?? 1,
+      intervalSeconds: (intervalSeconds ?? 1).clamp(0, 60),
       advisorMode: advisor,
       strengthBlend: (strengthBlend ?? 50).clamp(0, 100),
       advisorDifficulty: (advisorDifficulty ?? 5).clamp(1, 5),

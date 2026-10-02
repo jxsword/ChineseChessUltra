@@ -14,6 +14,7 @@ import '../../storage/repository.dart';
 import '../../record/record_saver.dart';
 import '../model/board_state.dart';
 import '../model/move.dart';
+import '../model/piece.dart';
 import '../viewmodel/board_vm.dart';
 import '../viewmodel/game_auto_save.dart';
 import '../viewmodel/game_restore.dart';
@@ -62,6 +63,15 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
   int _strengthBlend = 50;
   int _advisorDifficulty = 5;
 
+  /// 配置是否已从安全存储加载完成：dispose 回写仅在加载完成后进行，
+  /// 防止"进入页面即退出"用空配置覆盖用户的端点与 Key。
+  bool _configLoaded = false;
+  bool _settingsLoaded = false;
+
+  /// 最近一次从存储加载的完整设置（回写时 copyWith 只覆盖本页字段，
+  /// 避免与 llm_vs_llm 页共用的 intervalSeconds/红黑强度被清回默认）。
+  LlmGameSettings _lastLoadedSettings = const LlmGameSettings();
+
   bool _isLlmThinking = false;
 
   /// 模型思路 / 错误说明（状态栏展示）。
@@ -90,6 +100,8 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
     _autoSave = GameAutoSave(
       mode: GameMode.humanVsLlm,
       viewModel: _viewModel,
+      // 棋谱续战来源不写模式存档桶（与人机 AI/大模型对战页对齐）。
+      canSave: () => widget.initialFen == null,
     );
     _loadConfig();
     _loadSettings();
@@ -160,6 +172,8 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
   Future<void> _loadSettings() async {
     final settings = await _settingsStore.load();
     if (!mounted) return;
+    _lastLoadedSettings = settings;
+    _settingsLoaded = true;
     setState(() {
       _timeoutSeconds = settings.timeoutSeconds;
       _maxAttempts = settings.maxAttempts;
@@ -174,8 +188,10 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
   void _scheduleAutosave() {
     _autosaveTimer?.cancel();
     _autosaveTimer = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted || !_configLoaded || !_settingsLoaded) return;
       _saveConfig(showFeedback: false);
-      _settingsStore.save(LlmGameSettings(
+      // copyWith 只覆盖本页拥有的字段（intervalSeconds/红黑强度归 llm_vs_llm）。
+      _settingsStore.save(_lastLoadedSettings.copyWith(
         timeoutSeconds: _timeoutSeconds,
         maxAttempts: _maxAttempts,
         fallback: _fallback,
@@ -189,7 +205,10 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
   Future<void> _loadConfig() async {
     final config = await _configStore.loadBlack();
     if (!mounted) return;
-    setState(() => _blackConfig = config);
+    setState(() {
+      _blackConfig = config;
+      _configLoaded = true;
+    });
   }
 
   @override
@@ -197,15 +216,19 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
     _autosaveTimer?.cancel();
     // 离开页面：按全局"自动保存"开关触发棋局保存。
     _autoSave.dispose();
-    _saveConfig(showFeedback: false);
-    _settingsStore.save(LlmGameSettings(
-      timeoutSeconds: _timeoutSeconds,
-      maxAttempts: _maxAttempts,
-      fallback: _fallback,
-      advisorMode: _advisorMode,
-      strengthBlend: _strengthBlend,
-      advisorDifficulty: _advisorDifficulty,
-    ));
+    if (_configLoaded && _settingsLoaded) {
+      _saveConfig(showFeedback: false);
+      // 只覆盖本页拥有的字段：llm_vs_llm 页共用了这份存储
+      // （intervalSeconds/红黑强度归它），整对象回写会把它们清回默认。
+      _settingsStore.save(_lastLoadedSettings.copyWith(
+        timeoutSeconds: _timeoutSeconds,
+        maxAttempts: _maxAttempts,
+        fallback: _fallback,
+        advisorMode: _advisorMode,
+        strengthBlend: _strengthBlend,
+        advisorDifficulty: _advisorDifficulty,
+      ));
+    }
     // 模型思考途中离开页面时解锁棋盘输入，避免全局 ViewModel 残留锁定。
     _viewModel.unlockInput();
     super.dispose();
@@ -324,14 +347,16 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.bookmark),
-                      label: const Text('保存棋局'),
-                      onPressed: _saveGameManually,
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 40),
+                    // 棋谱续战来源不写模式存档桶（与人机 AI 页对齐）。
+                    if (widget.initialFen == null)
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.bookmark),
+                        label: const Text('保存棋局'),
+                        onPressed: _saveGameManually,
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 40),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -562,7 +587,17 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
       maxAttempts: _maxAttempts,
       fallback: _fallback,
     );
-    final result = await source.nextMove(boardSnapshot, history: history);
+    MoveSourceResult result;
+    try {
+      result = await source.nextMove(boardSnapshot, history: history);
+    } on Object catch (e) {
+      // 未预期异常（正常路径已被来源内部兜底）：复位状态防页面锁死。
+      if (!mounted || seq != _gameSeq) return;
+      setState(() => _isLlmThinking = false);
+      viewModel.unlockInput();
+      setState(() => _llmNote = '走子来源异常：$e');
+      return;
+    }
 
     if (!mounted || seq != _gameSeq) return;
     setState(() => _isLlmThinking = false);
@@ -584,7 +619,12 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
         // 无合法着法意味着已分出胜负，结果由棋盘状态呈现。
         setState(() => _llmNote = '');
       case MoveSourceStatus.failed:
-        setState(() => _llmNote = '黑方走子失败：${result.note ?? '未知原因'}');
+        // 降级策略为"该方判负"时显式写入胜负，避免对局软死锁
+        // （棋盘停在黑方行棋，红方无从下手，也不再触发新请求）。
+        viewModel.resign(Side.black);
+        setState(() {
+          _llmNote = '黑方走子失败：${result.note ?? '未知原因'}，判红方胜';
+        });
     }
   }
 }

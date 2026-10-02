@@ -76,7 +76,12 @@ class LlmPrompts {
   ///
   /// 解析器 [LlmMoveParser.extract] 优先取「着法:」标记后的坐标，
   /// 与本格式天然兼容。
-  static String systemV2(Side side) {
+  static String systemV2(Side side, {bool withBucketGuide = false}) {
+    final bucketGuide = withBucketGuide
+        ? '合法着法清单中每条着法附有括号注解（中文记法/吃子/将军）'
+            '与「—」后的引擎评估分档，请优先考虑评估为「最佳/均势」的着法，'
+            '避免选择「大亏/致命」档的着法。'
+        : '合法着法清单中每条着法附有括号注解（中文记法/吃子/将军）。';
     final sideName = side.isRed ? '红方' : '黑方';
     return '你是中国象棋对弈引擎的着法接口，本局执$sideName。\n'
         '坐标约定：列用字母 a-i（从左到右），行用数字 0-9'
@@ -90,9 +95,7 @@ class LlmPrompts {
         '着法: 起点-终点\n'
         '示例：着法: b2-e2\n'
         '\n'
-        '合法着法清单中每条着法附有括号注解（中文记法/吃子/将军）'
-        '与「—」后的引擎评估分档，请优先考虑评估为「最佳/均势」的着法，'
-        '避免选择「大亏/致命」档的着法。';
+        + bucketGuide;
   }
 
   /// v2 用户提示：FEN + 棋盘 ASCII 图 + 整局历史（≤60 着）+
@@ -147,10 +150,12 @@ class LlmPrompts {
   /// 检测历史末尾的来回重复（最近 4 着两两相同）。
   static bool _looksLikeRepetition(List<Move> history) {
     if (history.length < 4) return false;
-    bool same(Move a, Move b) => a.from == b.from && a.to == b.to;
+    // 红黑交替下"同侧同 from 重复"在几何上不可能，必须比互逆：
+    // 红 A→B、黑 C→D、红 B→A、黑 D→C。
+    bool isInverse(Move a, Move b) => a.from == b.to && a.to == b.from;
     final n = history.length;
-    return same(history[n - 1], history[n - 3]) &&
-        same(history[n - 2], history[n - 4]);
+    return isInverse(history[n - 1], history[n - 3]) &&
+        isInverse(history[n - 2], history[n - 4]);
   }
 }
 

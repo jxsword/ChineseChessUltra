@@ -37,6 +37,9 @@ class _BoardWidgetState extends ConsumerState<BoardWidget>
   }
 
   void _onTap(Offset localPosition, Size size, BoardState state) {
+    // 走子动画期间忽略新点击：动画结束才真正落子，此间受理点击会
+    // 切换选中/覆盖飞行棋子，导致 onMoved 在未落子或重复落子时触发。
+    if (_flying != null) return;
     final viewModel = ref.read(boardViewModelProvider.notifier);
     final board = viewModel.board;
 
@@ -90,12 +93,18 @@ class _BoardWidgetState extends ConsumerState<BoardWidget>
     // 把 from 处棋子先从底层 board 视图中"隐藏"：
     // 通过让 painter 在 animatingMove 非空时不绘制 from 处棋子来实现，
     // 而 board 实际 applyMove 在动画结束后再调用。
+    final historyBefore = ref.read(boardViewModelProvider).moveHistory.length;
     controller.forward().whenComplete(() {
       final viewModel = ref.read(boardViewModelProvider.notifier);
       viewModel.onTap(to.col, to.row);
       setState(() => _flying = null);
       flying.controller.dispose();
-      widget.onMoved?.call();
+      // 仅在真正落子（历史增长）时通知：动画窗口的竞态可能使 onTap
+      // 未产生走子，此时不得触发 onMoved（页面会据此触发 AI 应手）。
+      final historyAfter = ref.read(boardViewModelProvider).moveHistory.length;
+      if (historyAfter > historyBefore) {
+        widget.onMoved?.call();
+      }
     });
   }
 

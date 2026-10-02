@@ -38,12 +38,17 @@ http.Response sseReply(String content) {
 
 void main() {
   group('LlmPrompts v2', () {
-    test('systemV2：分析段 + 着法行 + 评估分档引导', () {
+    test('systemV2：分析段 + 着法行；分档引导仅候选模式携带', () {
       final system = LlmPrompts.systemV2(Side.red);
       expect(system, contains('分析:'));
       expect(system, contains('着法: 起点-终点'));
-      expect(system, contains('最佳/均势'));
       expect(system, contains('红方'));
+      // off/护航模式清单无分档，系统提示不应承诺分档。
+      expect(system, isNot(contains('最佳/均势')));
+      expect(
+        LlmPrompts.systemV2(Side.red, withBucketGuide: true),
+        contains('最佳/均势'),
+      );
     });
 
     test('userV2：含棋盘图、注解清单、吃子标注', () {
@@ -63,11 +68,12 @@ void main() {
 
     test('userV2：历史来回重复时带循环警示', () {
       final board = blackToMoveBoard();
+      // 真实拉锯：红炮平中、黑马跳外，随后双方原路返回。
       final history = [
         const Move(from: Position(7, 7), to: Position(4, 7)),
         const Move(from: Position(7, 0), to: Position(6, 2)),
-        const Move(from: Position(7, 7), to: Position(4, 7)),
-        const Move(from: Position(7, 0), to: Position(6, 2)),
+        const Move(from: Position(4, 7), to: Position(7, 7)),
+        const Move(from: Position(6, 2), to: Position(7, 0)),
       ];
       final user = LlmPrompts.userV2(
         board: board,

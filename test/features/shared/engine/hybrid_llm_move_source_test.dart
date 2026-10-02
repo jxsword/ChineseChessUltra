@@ -123,7 +123,7 @@ void main() {
 
       expect(result.fromFallback, isTrue);
       expect(encodeMove(result.move!), encodeMove(report.best));
-      expect(result.note, contains('已由参谋代走'));
+      expect(result.note, contains('已由参谋（内置引擎）代走'));
       // 重试反馈被追加（拒绝原因：不在候选清单中）。
       expect(client.userPrompts.last, contains('不在候选清单中'));
     });
@@ -224,10 +224,8 @@ void main() {
   });
 }
 
-/// 简单断言辅助（保持测试可读）。
+/// 前置条件断言：不满足即判失败（而非静默 Skip），防止否决链路
+/// 的真实回归被跳过掩盖。
 void assumeTrue(bool condition, String message) {
-  if (!condition) {
-    // ignore: only_throw_errors
-    throw Skip(message);
-  }
+  expect(condition, isTrue, reason: message);
 }

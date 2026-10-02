@@ -95,7 +95,7 @@ Future<bool> launchBattle(BuildContext context, GameRecord record) async {
         ),
       ),
     );
-    if (side == null) return false;
+    if (side == null || !context.mounted) return false;
     playerSide = side;
   }
 

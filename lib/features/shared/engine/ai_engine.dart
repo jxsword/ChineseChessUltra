@@ -90,6 +90,10 @@ class ChessAi {
     final probe = board.copy();
     final mover = probe.pieceAtP(move.from);
     if (mover == null || mover.side != probe.turn) return null;
+    // 几何合法性校验（applyMove 不校验蹩腿/隔子等伪非法着法）。
+    if (!probe.legalMovesFor(move.from).any((m) => m.to == move.to)) {
+      return null;
+    }
     probe.applyMove(move);
     if (probe.isCheck(mover.side)) return null; // 走完自将，非法
     final scored = _Search(

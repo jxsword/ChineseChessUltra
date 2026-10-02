@@ -6,6 +6,10 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import '../board/model/board_state.dart';
+import '../board/model/move.dart';
+import '../record/game_record.dart';
+
 /// 持久化的对局记录。
 class SavedGame {
   SavedGame({
@@ -91,7 +95,27 @@ class GameDao {
       )
     ''');
     _migrateV1(db);
+    _ensureGameRecords(db);
     return GameDao._(db);
+  }
+
+  /// 四期棋谱库表：与 saved_games（每模式一局的自动存档）互不影响。
+  static void _ensureGameRecords(Database db) {
+    db.execute('''
+      CREATE TABLE IF NOT EXISTS game_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        initial_fen TEXT NOT NULL,
+        moves_json TEXT NOT NULL,
+        result TEXT,
+        solve_status TEXT NOT NULL DEFAULT 'none',
+        solutions_json TEXT,
+        llm_note TEXT,
+        note TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
   }
 
   /// 一期建表无 mode 列：补列并把老数据标记为 'legacy'，
@@ -216,6 +240,120 @@ class GameDao {
   /// 清空全部（用于"新游戏"前清理历史快照）。
   void clear() {
     _db.execute('DELETE FROM saved_games');
+  }
+
+  // ---------------------------------------------------------------------------
+  // 棋谱库（game_records，四期）
+  // ---------------------------------------------------------------------------
+
+  /// 插入一条棋谱，返回写入后的 id。
+  int insertRecord(GameRecord record) {
+    final now = DateTime.now().toUtc().toIso8601String();
+    _db.execute(
+      '''
+      INSERT INTO game_records(
+        title, mode, initial_fen, moves_json, result,
+        solve_status, solutions_json, llm_note, note, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ''',
+      [
+        record.title,
+        record.mode,
+        record.initialFen,
+        jsonEncode(record.moves.map((m) => _recordMoveJson(m)).toList()),
+        record.result?.name,
+        record.solveStatus.name,
+        jsonEncode(record.solutions),
+        record.llmNote,
+        record.note,
+        record.createdAt?.toUtc().toIso8601String() ?? now,
+      ],
+    );
+    final rs = _db.select('SELECT last_insert_rowid() AS id');
+    return rs.first['id'] as int;
+  }
+
+  Map<String, dynamic> _recordMoveJson(Move m) => {
+        'f': [m.from.col, m.from.row],
+        't': [m.to.col, m.to.row],
+        'p': m.piece?.fen,
+        'x': m.captured?.fen,
+      };
+
+  /// 全部棋谱（按创建时间倒序）。
+  List<GameRecord> allRecords() {
+    final rs = _db.select(
+      'SELECT * FROM game_records ORDER BY datetime(created_at) DESC, id DESC',
+    );
+    return rs.map(_recordFromRow).toList();
+  }
+
+  /// 按 id 取棋谱；不存在返回 null。
+  GameRecord? recordById(int id) {
+    final rs = _db.select(
+      'SELECT * FROM game_records WHERE id = ?',
+      [id],
+    );
+    return rs.isEmpty ? null : _recordFromRow(rs.first);
+  }
+
+  /// 按 id 删除棋谱。
+  void deleteRecord(int id) {
+    _db.execute('DELETE FROM game_records WHERE id = ?', [id]);
+  }
+
+  /// 更新棋谱的可变字段（标题/备注/求解结论）。
+  void updateRecord(GameRecord record) {
+    if (record.id == null) return;
+    _db.execute(
+      '''
+      UPDATE game_records SET
+        title = ?, moves_json = ?, result = ?, solve_status = ?,
+        solutions_json = ?, llm_note = ?, note = ?
+      WHERE id = ?
+      ''',
+      [
+        record.title,
+        jsonEncode(record.moves.map((m) => _recordMoveJson(m)).toList()),
+        record.result?.name,
+        record.solveStatus.name,
+        jsonEncode(record.solutions),
+        record.llmNote,
+        record.note,
+        record.id,
+      ],
+    );
+  }
+
+  GameRecord _recordFromRow(Row row) {
+    final movesJson = jsonDecode(row['moves_json'] as String) as List;
+    final resultName = row['result'] as String?;
+    final statusName = row['solve_status'] as String? ?? 'none';
+    return GameRecord(
+      id: row['id'] as int,
+      title: row['title'] as String,
+      mode: row['mode'] as String,
+      initialFen: row['initial_fen'] as String,
+      moves: movesJson
+          .map((e) => GameRecord.decodeMoveJson(e as Map<String, dynamic>))
+          .toList(),
+      result: resultName == null
+          ? null
+          : GameResult.values.firstWhere(
+              (r) => r.name == resultName,
+              orElse: () => GameResult.draw,
+            ),
+      solveStatus: SolveStatus.values.firstWhere(
+        (s) => s.name == statusName,
+        orElse: () => SolveStatus.none,
+      ),
+      solutions: (jsonDecode(row['solutions_json'] as String? ?? '[]') as List)
+          .map((e) => (e as List).map((v) => v as String).toList())
+          .toList(),
+      llmNote: row['llm_note'] as String?,
+      note: row['note'] as String?,
+      createdAt: DateTime.tryParse(row['created_at'] as String? ?? ''),
+    );
   }
 
   void dispose() {

@@ -148,6 +148,79 @@ void main() {
         throwsA(isA<LlmConfigException>()),
       );
     });
+
+    test('默认关闭思维链（请求体带 enable_thinking=false）', () async {
+      Map<String, dynamic>? captured;
+      final client = MockClient((request) async {
+        captured = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'content': '{"turn":"red","pieces":['
+                      '{"col":"d","row":"0","piece":"k"},'
+                      '{"col":"e","row":"9","piece":"K"}'
+                      ']}',
+                },
+              },
+            ],
+          }),
+          200,
+        );
+      });
+      await VisionBoardReader(client: client)
+          .readBoard(config: config, imageBytes: pngBytes);
+      // LlmConfig 默认 disableThinking=true。
+      expect(captured?['enable_thinking'], false);
+    });
+
+    test('disableThinking=false 时不发送该参数', () async {
+      Map<String, dynamic>? captured;
+      final client = MockClient((request) async {
+        captured = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'choices': [
+              {
+                'message': {
+                  'content': '{"turn":"red","pieces":['
+                      '{"col":"d","row":"0","piece":"k"},'
+                      '{"col":"e","row":"9","piece":"K"}'
+                      ']}',
+                },
+              },
+            ],
+          }),
+          200,
+        );
+      });
+      const cfg = LlmConfig(
+        baseUrl: 'https://example.com/v1',
+        model: 'vision-model',
+        disableThinking: false,
+      );
+      await VisionBoardReader(client: client)
+          .readBoard(config: cfg, imageBytes: pngBytes);
+      expect(captured?.containsKey('enable_thinking'), isFalse);
+    });
+
+    test('请求超时 → 返回友好的 LlmApiException 提示', () async {
+      final client = MockClient((request) async {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        return http.Response('{}', 200);
+      });
+      await expectLater(
+        VisionBoardReader(
+          client: client,
+          timeout: const Duration(milliseconds: 50),
+        ).readBoard(config: config, imageBytes: pngBytes, maxAttempts: 1),
+        throwsA(
+          isA<LlmApiException>()
+              .having((e) => '$e', 'message', contains('请求超时')),
+        ),
+      );
+    });
   });
 
   group('LlmSolveAssist.parseProposal', () {

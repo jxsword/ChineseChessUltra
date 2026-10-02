@@ -4,15 +4,16 @@ import 'package:chinese_chess_ultra/features/board/model/move.dart';
 import 'package:chinese_chess_ultra/features/solver/endgame_solver.dart';
 
 void main() {
-  /// 双车闷杀残局（红先，多着皆可 1 着制胜）：
-  /// - 黑将 (0,0)，黑卒 (1,1) 堵住 (1,1)；
-  /// - 红马 (2,2) 永久盖住 (1,0)（马腿 (2,1) 为空）；
-  /// - 红车一 (5,6)、红车二 (8,4)：任意一车平 0 列即沿 0 列将军成杀；
-  /// - 红帅 (3,9)。初始黑方未被将军（合法）。
-  const mateIn1Fen = 'k8/1p7/2N6/9/8R/9/5R3/9/9/3K5 w';
+  /// 双车马闷杀残局（红先，两车各有一路 1 着杀；全部棋子位置合法）：
+  /// - 黑将 (3,0)（九宫角）；出逃格仅 (4,0)、(3,1)；
+  /// - 红马 (2,1) 盖住 (4,0)（马腿 (3,1) 为空）；
+  /// - 红车一 (0,4)：平 3 列 (3,4) 沿 3 列将军，(3,1) 由本车封闭 → 杀；
+  /// - 红车二 (8,5)：平 3 列 (3,5) 沿 3 列将军 → 杀；
+  /// - 红帅 (4,9)。初始黑方未被将军且有合法着法（局面合法）。
+  const mateIn1Fen = '3k5/9/9/9/R8/8R/9/9/9/4K4 w';
 
   group('mate-in-1 残局', () {
-    test('解出多条破解走法（两车各平 0 列皆杀）', () async {
+    test('解出多条破解走法（两车各平 3 列皆杀）', () async {
       final result = await EndgameSolver.solve(
         mateIn1Fen,
         timeLimit: const Duration(seconds: 10),
@@ -26,15 +27,15 @@ void main() {
       final toSquares = result.solutions
           .map((s) => '${s.moves.first.to.col},${s.moves.first.to.row}')
           .toSet();
-      expect(toSquares, contains('0,6')); // 车一 (5,6) 平 0 列
-      expect(toSquares, contains('0,4')); // 车二 (8,4) 平 0 列
+      expect(toSquares, contains('3,4')); // 车一 (0,4) 平 3 列
+      expect(toSquares, contains('3,5')); // 车二 (8,5) 平 3 列
     });
 
-    test('isWinningFirstMove：车一 (5,6)->(0,6) 为必胜首着', () {
+    test('isWinningFirstMove：车一 (0,4)->(3,4) 为必胜首着', () {
       expect(
         EndgameSolver.isWinningFirstMove(
           fen: mateIn1Fen,
-          firstMove: const Move(from: Position(5, 6), to: Position(0, 6)),
+          firstMove: const Move(from: Position(0, 4), to: Position(3, 4)),
           plies: 1,
         ),
         isTrue,
@@ -45,7 +46,7 @@ void main() {
       expect(
         EndgameSolver.isWinningFirstMove(
           fen: mateIn1Fen,
-          firstMove: const Move(from: Position(2, 2), to: Position(4, 1)),
+          firstMove: const Move(from: Position(2, 1), to: Position(4, 2)),
           plies: 1,
         ),
         isFalse,

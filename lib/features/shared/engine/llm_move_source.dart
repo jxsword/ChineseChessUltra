@@ -383,8 +383,34 @@ class LlmMoveSource implements MoveSource {
       await source._chat('你是一个连通性测试助手。', '请回复：ok');
       return (true, '连接成功，模型 ${config.model} 响应正常');
     } on Object catch (e) {
-      return (false, '连接失败：$e');
+      return (false, '连接失败：${annotateModelHint('$e')}');
     }
+  }
+
+  /// 把"模型类型用错"的典型服务端报错翻译成可操作的提示（公开以便单测）。
+  ///
+  /// 两类典型：
+  /// - 图片生成模型（qwen-image-* 等）：请求被路由到原生生成接口并用
+  ///   input.messages 的格式校验，报 "Input should be 'user': input.messages ..."；
+  /// - 翻译模型（qwen-mt-* 等）：不支持流式，报 "Streaming translation is
+  ///   not supported"——输入虽可多模态，但任务是翻译，不能用于识图。
+  static String annotateModelHint(String message) {
+    final lower = message.toLowerCase();
+    if (lower.contains('streaming translation') ||
+        lower.contains('translation is not supported')) {
+      return '$message\n\n提示：这是翻译模型（qwen-mt-* 系列），'
+          '不支持流式输出、也不能做棋盘识图。识图请改用视觉理解模型'
+          '（如 qwen-vl-max、qwen3-vl-plus、glm-4.5v）。';
+    }
+    final looksLikeWrongModelType = message.contains('invalid_parameter_error') ||
+        message.contains("should be 'user'") ||
+        message.contains('input.messages');
+    if (looksLikeWrongModelType) {
+      return '$message\n\n提示：该模型可能不支持 OpenAI 兼容对话接口'
+          '（图片生成类模型会这样报错）。识图请改用视觉理解模型'
+          '（如 qwen-vl-max、glm-4.5v），对话请改用对应对话模型。';
+    }
+    return message;
   }
 }
 

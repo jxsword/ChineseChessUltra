@@ -263,4 +263,28 @@ void main() {
       expect(restored.disableThinking, isTrue);
     });
   });
+
+  group('annotateModelHint 模型类型提示', () {
+    test('图片生成模型的典型报错被翻译为可操作提示', () {
+      final raw = '流式响应错误: {"code":"invalid_parameter_error",'
+          '"message":"Input should be \'user\': input.messages 0.role"}';
+      final hint = LlmMoveSource.annotateModelHint(raw);
+      expect(hint, contains('视觉理解模型'));
+      expect(hint, contains('qwen-vl-max'));
+    });
+
+    test('普通网络错误不附加提示', () {
+      final hint = LlmMoveSource.annotateModelHint('HTTP 500: server error');
+      expect(hint, 'HTTP 500: server error');
+    });
+
+    test('翻译模型不支持流式的报错被翻译为可操作提示', () {
+      const raw = 'HTTP 400: {"error":{"message":'
+          '"Streaming translation is not supported","code":'
+          '"invalid_parameter_error"}}';
+      final hint = LlmMoveSource.annotateModelHint(raw);
+      expect(hint, contains('翻译模型'));
+      expect(hint, contains('qwen-vl-max'));
+    });
+  });
 }

@@ -19,6 +19,7 @@ import '../shared/engine/llm_solve_assist.dart';
 import '../shared/engine/move_source.dart';
 import '../shared/engine/vision_board_reader.dart';
 import '../solver/endgame_solver.dart';
+import 'board_setup_rules.dart';
 import 'assistant_config_dialog.dart';
 
 /// 残局工作室：自己摆残局 / FEN 导入 / 图片 AI 识图，然后 AI 求破解。
@@ -48,6 +49,10 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
   bool _readingImage = false;
   String? _visionMessage;
 
+  /// 识图已用时（秒），识别期间每秒刷新。
+  Timer? _visionTimer;
+  int _visionElapsed = 0;
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +62,7 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
   @override
   void dispose() {
     _tabController.dispose();
+    _visionTimer?.cancel();
     super.dispose();
   }
 
@@ -86,6 +92,22 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
     if (redKing != 1 || blackKing != 1) {
       problems.add('双方必须各有一个将/帅（红 $redKing / 黑 $blackKing）');
     }
+    if (problems.isNotEmpty) return problems;
+    // 全盘棋子位置与数量合法性（FEN 导入/识图载入的棋盘同样校验）。
+    final counts = <Piece, int>{};
+    for (var row = 0; row < 10; row++) {
+      for (var col = 0; col < 9; col++) {
+        final piece = _grid[row][col];
+        if (piece == null) continue;
+        counts[piece] = (counts[piece] ?? 0) + 1;
+        final issue = BoardSetupRules.placementIssue(piece, col, row);
+        if (issue != null) {
+          problems.add('($col,$row) ${piece.label}：$issue');
+        }
+      }
+    }
+    final countIssue = BoardSetupRules.countIssue(counts);
+    if (countIssue != null) problems.add(countIssue);
     if (problems.isNotEmpty) return problems;
     final board = Board.fromFen(_currentFen);
     // 轮走方的对手不应正被将军（否则说明上一手未解除将军，局面非法）。
@@ -139,13 +161,43 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
         _grid[row][col] = null;
         return;
       }
-      if (_selectedPiece != null) {
-        _grid[row][col] = _selectedPiece;
+      final piece = _selectedPiece;
+      if (piece != null) {
+        final occupant = _grid[row][col];
+        // 位置合法性：放置时即校验（九宫/士象斜线/兵卒底线等）。
+        final issue = BoardSetupRules.placementIssue(piece, col, row);
+        if (issue != null) {
+          _toast(issue);
+          return;
+        }
+        // 数量合法性：同格同子为替换（数量不变），否则校验上限。
+        final countIssue = BoardSetupRules.countIssueForPlacement(
+          piece,
+          _countKind(piece),
+          occupant: occupant,
+        );
+        if (countIssue != null) {
+          _toast(countIssue);
+          return;
+        }
+        _grid[row][col] = piece;
         return;
       }
       // 未选棋子：点击已有棋子为取走。
       _grid[row][col] = null;
     });
+  }
+
+  int _countKind(Piece piece) {
+    var count = 0;
+    for (final row in _grid) {
+      for (final p in row) {
+        if (p != null && p.kind == piece.kind && p.side == piece.side) {
+          count++;
+        }
+      }
+    }
+    return count;
   }
 
   Widget _buildControlArea() {
@@ -340,6 +392,15 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
               : const Icon(Icons.image_search),
           label: const Text('选择棋盘图片并识别'),
         ),
+        if (_readingImage)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              '识别中… 已用时 $_visionElapsed 秒'
+              '（一般 5~20 秒；大图或思考型模型会更久，超时上限 120 秒）',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
         const SizedBox(height: 8),
         TextButton.icon(
           onPressed: () => showAssistantConfigDialog(context),
@@ -377,10 +438,19 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
         withData: true,
       );
       final bytes = picked?.files.single.bytes;
-      if (bytes != null) await _readImage(bytes);
+      // 计时从"图片已选中"开始：文件浏览期间不计入。
+      if (bytes != null) {
+        setState(() => _visionElapsed = 0);
+        _visionTimer?.cancel();
+        _visionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+          if (mounted) setState(() => _visionElapsed++);
+        });
+        await _readImage(bytes);
+      }
     } on Object catch (e) {
       if (mounted) setState(() => _visionMessage = '识图失败：$e');
     } finally {
+      _visionTimer?.cancel();
       if (mounted) setState(() => _readingImage = false);
     }
   }
@@ -414,12 +484,55 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
   Widget _buildActionBar() {
     return Padding(
       padding: const EdgeInsets.all(12),
-      child: FilledButton.icon(
-        onPressed: _startSolve,
-        icon: const Icon(Icons.psychology_alt),
-        label: const Text('AI 求破解'),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _saveUnsolvedRecord,
+              icon: const Icon(Icons.bookmark_add_outlined),
+              label: const Text('保存棋局'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _startSolve,
+              icon: const Icon(Icons.psychology_alt),
+              label: const Text('AI 求破解'),
+            ),
+          ),
+        ],
       ),
     );
+  }
+
+  /// 手动保存当前残局（未求解状态直接入库；求解后另有自动入库）。
+  Future<void> _saveUnsolvedRecord() async {
+    final problems = _validate();
+    if (problems.isNotEmpty) {
+      _toast(problems.join('；'));
+      return;
+    }
+    try {
+      final now = DateTime.now();
+      final pad = (int v) => v.toString().padLeft(2, '0');
+      final record = GameRecord(
+        title:
+            '${now.month}-${pad(now.day)} ${_redTurn ? '红' : '黑'}方残局（未求解）',
+        mode: GameRecord.endgameMode,
+        initialFen: _currentFen,
+        moves: const [],
+        solveStatus: SolveStatus.none,
+        createdAt: now,
+      );
+      final repo = await ref.read(recordRepositoryProvider.future);
+      repo.save(record);
+      if (!mounted) return;
+      _toast('棋局已保存到棋谱库（未求解）');
+    } on Object {
+      if (!mounted) return;
+      _toast('保存失败：本地存储不可用');
+    }
   }
 
   Future<void> _startSolve() async {

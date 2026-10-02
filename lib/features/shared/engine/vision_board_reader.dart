@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -29,9 +30,12 @@ class VisionReadResult {
 /// 只负责"图片 → 候选 FEN"；识别结果必须经 Fen.isValid 与人工校正界面
 /// 复核后方可进入求解流程（docs/phase4/02 §3.2 校验管线）。
 class VisionBoardReader {
-  VisionBoardReader({this.client, this.timeout = const Duration(seconds: 60)});
+  VisionBoardReader({this.client, this.timeout = const Duration(seconds: 120)});
 
   final http.Client? client;
+
+  /// 单次识图请求超时。视觉模型（尤其思考型）大图处理可能超过 1 分钟，
+  /// 默认 120s；实测关闭思维链后 qwen3.8-max 约 6~14s 返回。
   final Duration timeout;
 
   /// 调用视觉模型识别棋盘，返回组装好的 FEN。
@@ -64,11 +68,15 @@ class VisionBoardReader {
           pieceCount: pieceCount,
           rawContent: content,
         );
+      } on TimeoutException {
+        // 与普通异常区分：给用户可操作的提示，而不是裸 TimeoutException。
+        lastError = '请求超时（${timeout.inSeconds}s）。'
+            '大模型思维链过慢或网络较差，可重试或更换更快的视觉模型';
       } on Object catch (e) {
-        lastError = e;
+        lastError = '$e';
       }
     }
-    throw LlmApiException('识图失败（$maxAttempts 次）：$lastError');
+    throw LlmApiException('已重试 $maxAttempts 次仍失败：$lastError');
   }
 
   Future<String> _request(LlmConfig config, String dataUrl) async {
@@ -103,6 +111,9 @@ class VisionBoardReader {
               ],
               'temperature': 0.1,
               'max_tokens': 4096,
+              // 思考型模型（qwen3.8-max 等）的思维链会把识图拖到 60s 以上
+              // （实测关闭后 115s→6s）；与对弈通道一致，由配置开关控制。
+              if (config.disableThinking) 'enable_thinking': false,
             }),
           )
           .timeout(timeout);

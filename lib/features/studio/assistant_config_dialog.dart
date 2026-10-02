@@ -36,7 +36,8 @@ Future<void> showAssistantConfigDialog(BuildContext context) async {
               TextField(
                 controller: modelController,
                 decoration: const InputDecoration(
-                  labelText: '模型 ID（识图需视觉模型，如 glm-4.5v）',
+                  labelText: '模型 ID（识图需视觉理解模型，如 glm-4.5v / qwen-vl-max）',
+                  helperText: '注意：qwen-image-* 等图片生成模型不能用于识图',
                 ),
               ),
               const SizedBox(height: 12),
@@ -51,9 +52,9 @@ Future<void> showAssistantConfigDialog(BuildContext context) async {
               const SizedBox(height: 8),
               DropdownButtonFormField<LlmPreset>(
                 initialValue: null,
-                hint: const Text('选择预设端点'),
+                hint: const Text('选择视觉模型预设'),
                 items: [
-                  for (final preset in LlmPreset.all)
+                  for (final preset in LlmPreset.visionAll)
                     DropdownMenuItem(
                       value: preset,
                       child: Text('${preset.name}  ${preset.exampleModel}'),

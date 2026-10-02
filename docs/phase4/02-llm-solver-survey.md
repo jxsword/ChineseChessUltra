@@ -108,9 +108,13 @@ flowchart LR
       { "type": "text", "text": "<识图提示词>" }
     ]}
   ],
-  "temperature": 0.1
+  "temperature": 0.1,
+  "max_tokens": 4096,
+  "enable_thinking": false
 }
 ```
+
+> **性能实测（2026-10，qwen3.8-max）**：思维链默认开启时识图请求耗时 61~115s（completion_tokens 3000~4600 全部是思考 token），60s 超时必然失败；带上 `enable_thinking: false` 后降至 **6~14s**。因此识图请求默认携带该参数（复用 `LlmConfig.disableThinking` 开关），请求超时默认 120s，超时报错翻译为可操作提示。
 
 - **识图提示词**（要求输出可校验的 JSON，而非自由文本）：
 

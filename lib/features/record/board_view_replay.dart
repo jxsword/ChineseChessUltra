@@ -83,7 +83,10 @@ class _ReplayBoardViewState extends State<ReplayBoardView> {
                     DropdownMenuItem(
                       value: -1,
                       child: Text(
-                        moves.isEmpty ? '主变（无着法）' : '主变（${moves.length} 着）',
+                        // 主变标签始终取棋谱主变的着数，不受当前线路影响。
+                        widget.record.moves.isEmpty
+                            ? '主变（无着法）'
+                            : '主变（${widget.record.moves.length} 着）',
                       ),
                     ),
                     for (var i = 0; i < lineCount; i++)

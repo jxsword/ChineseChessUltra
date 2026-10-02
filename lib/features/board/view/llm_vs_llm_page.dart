@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/engine/llm_config.dart';
+import '../../shared/engine/llm_config_store.dart';
 import '../../shared/engine/llm_move_source.dart';
 import '../../shared/engine/hybrid_llm_move_source.dart';
 import '../../shared/engine/llm_settings.dart';

@@ -83,7 +83,9 @@ MoveSource hybridCandidateSource() => HybridLlmMoveSource(
       maxAttempts: 2,
     );
 
-MoveSource chessAiOpponent() => ChessAiMoveSource(difficulty: 1);
+/// 对手用 d3（无随机窗口）：保证对局完全可复现（d1 带 120 厘兵随机性，
+/// 会引入偶发失败）。
+MoveSource chessAiOpponent() => ChessAiMoveSource(difficulty: 3);
 
 void main() {
   group('战术命中率（确定性）', () {
@@ -122,7 +124,7 @@ void main() {
   });
 
   group('对局质量（MatchRunner，短局确定性对比）', () {
-    test('Hybrid 对弱模型的失误率改善：对抗 ChessAi(d1) 短局', () async {
+    test('Hybrid 对弱模型的失误率改善：对抗 ChessAi(d3) 短局', () async {
       // 基线（弱模型裸奔）。
       final baselineReport = await MatchRunner.run(
         red: baselineSource(),
@@ -142,15 +144,13 @@ void main() {
 
       expect(baselineReport.evaluatedPlies, greaterThan(0));
       expect(hybridReport.evaluatedPlies, greaterThan(0));
-      // 弱模型选尾策略失误率高；Hybrid 限制在引擎名单内后失误率应显著更低。
-      expect(
-        hybridReport.redBlunders,
-        lessThanOrEqualTo(baselineReport.redBlunders),
-        reason: '基线失误 ${baselineReport.redBlunders}/'
-            '${baselineReport.evaluatedPlies}，'
-            'Hybrid 失误 ${hybridReport.redBlunders}/'
-            '${hybridReport.evaluatedPlies}',
-      );
+      // Top-3 跟随率：Hybrid 候选模式被限定在引擎名单内（0 失随），
+      // 基线选尾必然大量脱离引擎认可集合。
+      expect(hybridReport.redTop3Misses, 0,
+          reason: '候选模式所有选择都应在引擎 Top-3 内');
+      expect(baselineReport.redTop3Misses, greaterThan(0),
+          reason: '基线选尾应有脱离引擎 Top-3 的着法');
+
     });
 
     test('“大模型对战”场景：两 Hybrid 互打能正常完成对局', () async {

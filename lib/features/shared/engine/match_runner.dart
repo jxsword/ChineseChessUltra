@@ -20,6 +20,10 @@ class MatchReport {
     required this.redBlunders,
     required this.blackBlunders,
     required this.evaluatedPlies,
+    required this.redTop3Hits,
+    required this.redTop3Misses,
+    required this.blackTop3Hits,
+    required this.blackTop3Misses,
     required this.movesIccs,
   });
 
@@ -39,6 +43,12 @@ class MatchReport {
   final int redBlunders;
   final int blackBlunders;
   final int evaluatedPlies;
+
+  /// 所选着法 ∈ 引擎当层 Top-3 的跟随统计（质量跟随度指标）。
+  final int redTop3Hits;
+  final int redTop3Misses;
+  final int blackTop3Hits;
+  final int blackTop3Misses;
   final List<String> movesIccs;
 
   Map<String, dynamic> toJson() => {
@@ -52,6 +62,10 @@ class MatchReport {
         'redBlunders': redBlunders,
         'blackBlunders': blackBlunders,
         'evaluatedPlies': evaluatedPlies,
+        'redTop3Hits': redTop3Hits,
+        'redTop3Misses': redTop3Misses,
+        'blackTop3Hits': blackTop3Hits,
+        'blackTop3Misses': blackTop3Misses,
         'moves': movesIccs,
       };
 
@@ -87,6 +101,10 @@ class MatchRunner {
     var redBlunders = 0;
     var blackBlunders = 0;
     var evaluatedPlies = 0;
+    var redTop3Hits = 0;
+    var redTop3Misses = 0;
+    var blackTop3Hits = 0;
+    var blackTop3Misses = 0;
 
     String sideResign(Side loser, String note) => loser.isRed
         ? 'red-resign'
@@ -117,6 +135,10 @@ class MatchRunner {
           redBlunders: redBlunders,
           blackBlunders: blackBlunders,
           evaluatedPlies: evaluatedPlies,
+          redTop3Hits: redTop3Hits,
+          redTop3Misses: redTop3Misses,
+          blackTop3Hits: blackTop3Hits,
+          blackTop3Misses: blackTop3Misses,
           movesIccs: movesIccs,
         );
       }
@@ -141,6 +163,10 @@ class MatchRunner {
           redBlunders: redBlunders,
           blackBlunders: blackBlunders,
           evaluatedPlies: evaluatedPlies,
+          redTop3Hits: redTop3Hits,
+          redTop3Misses: redTop3Misses,
+          blackTop3Hits: blackTop3Hits,
+          blackTop3Misses: blackTop3Misses,
           movesIccs: movesIccs,
         );
       }
@@ -162,6 +188,10 @@ class MatchRunner {
           redBlunders: redBlunders,
           blackBlunders: blackBlunders,
           evaluatedPlies: evaluatedPlies,
+          redTop3Hits: redTop3Hits,
+          redTop3Misses: redTop3Misses,
+          blackTop3Hits: blackTop3Hits,
+          blackTop3Misses: blackTop3Misses,
           movesIccs: movesIccs,
         );
       }
@@ -191,6 +221,14 @@ class MatchRunner {
               blackBlunders++;
             }
           }
+          final inTop3 = report.topK
+              .take(3)
+              .any((e) => e.$1.from == move.from && e.$1.to == move.to);
+          if (mover.isRed) {
+            inTop3 ? redTop3Hits++ : redTop3Misses++;
+          } else {
+            inTop3 ? blackTop3Hits++ : blackTop3Misses++;
+          }
         }
       }
 
@@ -219,6 +257,10 @@ class MatchRunner {
           redBlunders: redBlunders,
           blackBlunders: blackBlunders,
           evaluatedPlies: evaluatedPlies,
+          redTop3Hits: redTop3Hits,
+          redTop3Misses: redTop3Misses,
+          blackTop3Hits: blackTop3Hits,
+          blackTop3Misses: blackTop3Misses,
           movesIccs: movesIccs,
         );
       }
@@ -235,6 +277,10 @@ class MatchRunner {
           redBlunders: redBlunders,
           blackBlunders: blackBlunders,
           evaluatedPlies: evaluatedPlies,
+          redTop3Hits: redTop3Hits,
+          redTop3Misses: redTop3Misses,
+          blackTop3Hits: blackTop3Hits,
+          blackTop3Misses: blackTop3Misses,
           movesIccs: movesIccs,
         );
       }
@@ -251,6 +297,10 @@ class MatchRunner {
       redBlunders: redBlunders,
       blackBlunders: blackBlunders,
       evaluatedPlies: evaluatedPlies,
+      redTop3Hits: redTop3Hits,
+      redTop3Misses: redTop3Misses,
+      blackTop3Hits: blackTop3Hits,
+      blackTop3Misses: blackTop3Misses,
       movesIccs: movesIccs,
     );
   }
@@ -290,6 +340,10 @@ class MatchRunner {
     required int redBlunders,
     required int blackBlunders,
     required int evaluatedPlies,
+    required int redTop3Hits,
+    required int redTop3Misses,
+    required int blackTop3Hits,
+    required int blackTop3Misses,
     required List<String> movesIccs,
   }) {
     return MatchReport(
@@ -303,6 +357,10 @@ class MatchRunner {
       redBlunders: redBlunders,
       blackBlunders: blackBlunders,
       evaluatedPlies: evaluatedPlies,
+      redTop3Hits: redTop3Hits,
+      redTop3Misses: redTop3Misses,
+      blackTop3Hits: blackTop3Hits,
+      blackTop3Misses: blackTop3Misses,
       movesIccs: movesIccs,
     );
   }

@@ -20,7 +20,6 @@ import 'dart:io';
 import 'package:chinese_chess_ultra/features/shared/engine/hybrid_llm_move_source.dart';
 import 'package:chinese_chess_ultra/features/shared/engine/llm_config.dart';
 import 'package:chinese_chess_ultra/features/shared/engine/llm_move_source.dart';
-import 'package:chinese_chess_ultra/features/shared/engine/llm_settings.dart';
 import 'package:chinese_chess_ultra/features/shared/engine/match_runner.dart';
 import 'package:chinese_chess_ultra/features/shared/engine/move_source.dart';
 

@@ -15,6 +15,7 @@ import '../puzzle/model/iccs.dart';
 import '../record/game_record.dart';
 import '../record/record_repository.dart';
 import '../shared/engine/llm_config.dart';
+import '../shared/engine/llm_config_store.dart';
 import '../shared/engine/llm_solve_assist.dart';
 import '../shared/engine/move_source.dart';
 import '../shared/engine/vision_board_reader.dart';

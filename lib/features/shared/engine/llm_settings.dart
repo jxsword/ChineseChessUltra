@@ -1,24 +1,9 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'hybrid_llm_move_source.dart';
 import 'llm_move_source.dart';
 
-/// 引擎参谋模式（五期 P1）。
-enum AdvisorMode {
-  /// 关闭参谋：纯 Prompt v2（P0），LLM 在全量清单中自由选择。
-  off,
-
-  /// 候选模式：引擎出 Top-K 短名单，LLM 只在 K 条里选。
-  candidate,
-
-  /// 护航模式：LLM 自由选，引擎对致命失误有一票否决权。
-  gate;
-
-  String get label => switch (this) {
-        AdvisorMode.off => '关闭（纯大模型）',
-        AdvisorMode.candidate => '候选模式（引擎出名单）',
-        AdvisorMode.gate => '护航模式（引擎否决权）',
-      };
-}
+export 'hybrid_llm_move_source.dart' show AdvisorMode;
 
 /// 对局设置（非敏感项，存 shared_preferences 即可）。
 class LlmGameSettings {

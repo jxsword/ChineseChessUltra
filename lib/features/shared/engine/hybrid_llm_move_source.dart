@@ -8,9 +8,26 @@ import '../../board/model/move_notation.dart';
 import 'ai_engine.dart';
 import 'llm_config.dart';
 import 'llm_move_source.dart';
-import 'llm_settings.dart' show AdvisorMode;
 import 'move_annotation.dart';
 import 'move_source.dart';
+
+/// 引擎参谋模式（五期 P1）。
+enum AdvisorMode {
+  /// 关闭参谋：纯 Prompt v2（P0），LLM 在全量清单中自由选择。
+  off,
+
+  /// 候选模式：引擎出 Top-K 短名单，LLM 只在 K 条里选。
+  candidate,
+
+  /// 护航模式：LLM 自由选，引擎对致命失误有一票否决权。
+  gate;
+
+  String get label => switch (this) {
+        AdvisorMode.off => '关闭（纯大模型）',
+        AdvisorMode.candidate => '候选模式（引擎出名单）',
+        AdvisorMode.gate => '护航模式（引擎否决权）',
+      };
+}
 
 /// 引擎参谋制走子来源（五期 P1 核心，docs/phase5/02 §2）。
 ///

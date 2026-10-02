@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../board/model/board_state.dart';
+import 'record_battle_launcher.dart';
 import 'board_view_replay.dart';
 import 'clipboard_guard.dart';
 import 'game_record.dart';
@@ -100,11 +101,19 @@ class _RecordLibraryPageState extends ConsumerState<RecordLibraryPage> {
             ),
             trailing: PopupMenuButton<String>(
               onSelected: (value) => _onMenu(value, record),
-              itemBuilder: (context) => const [
-                PopupMenuItem(value: 'pgn', child: Text('导出 PGN（复制）')),
-                PopupMenuItem(value: 'share', child: Text('分享文本（复制）')),
-                PopupMenuItem(value: 'file', child: Text('导出 PGN 文件')),
-                PopupMenuItem(value: 'delete', child: Text('删除')),
+              itemBuilder: (context) => [
+                if (canLaunchBattle(record))
+                  const PopupMenuItem(
+                    value: 'battle',
+                    child: Text('进入对战'),
+                  ),
+                const PopupMenuItem(
+                    value: 'pgn', child: Text('导出 PGN（复制）')),
+                const PopupMenuItem(
+                    value: 'share', child: Text('分享文本（复制）')),
+                const PopupMenuItem(
+                    value: 'file', child: Text('导出 PGN 文件')),
+                const PopupMenuItem(value: 'delete', child: Text('删除')),
               ],
             ),
             onTap: () async {
@@ -140,6 +149,8 @@ class _RecordLibraryPageState extends ConsumerState<RecordLibraryPage> {
   Future<void> _onMenu(String value, GameRecord record) async {
     final messenger = ScaffoldMessenger.of(context);
     switch (value) {
+      case 'battle':
+        await launchBattle(context, record);
       case 'pgn':
         await ClipboardGuard.copy(PgnWriter.write(record));
         messenger.showSnackBar(const SnackBar(content: Text('PGN 已复制')));
@@ -199,6 +210,14 @@ class RecordDetailPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(record.title, overflow: TextOverflow.ellipsis),
+        actions: [
+          if (canLaunchBattle(record))
+            IconButton(
+              icon: const Icon(Icons.sports_esports),
+              tooltip: '进入对战',
+              onPressed: () => launchBattle(context, record),
+            ),
+        ],
       ),
       body: Column(
         children: [

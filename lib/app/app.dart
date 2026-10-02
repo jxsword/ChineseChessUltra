@@ -3,18 +3,19 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../features/board/view/board_page.dart';
 import '../features/puzzle/view/puzzle_list_page.dart';
 import '../features/board/view/human_vs_ai_page.dart';
 import '../features/board/view/human_vs_llm_page.dart';
 import '../features/board/view/llm_vs_llm_page.dart';
-import '../features/board/model/board.dart';
 import '../features/board/model/board_state.dart';
 import '../features/board/viewmodel/board_vm.dart';
 import '../features/board/viewmodel/game_auto_save.dart';
 import '../features/board/viewmodel/game_restore.dart';
 import '../features/board/view/widgets/board_widget.dart';
 import '../features/board/view/widgets/side_panel.dart';
+import '../features/record/record_saver.dart';
+import '../features/record/record_library_page.dart';
+import '../features/studio/endgame_studio_page.dart';
 import '../features/storage/game_mode.dart';
 import '../features/storage/repository.dart';
 import '../features/settings/global_settings.dart';
@@ -135,6 +136,30 @@ class _MainNavigationPageState extends State<MainNavigationPage> {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const HumanVsHumanGamePage(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildNavigationButton(
+              context,
+              '残局工作室（摆盘/导入/求解）',
+              const Icon(Icons.extension),
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const EndgameStudioPage(),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildNavigationButton(
+              context,
+              '棋谱库',
+              const Icon(Icons.menu_book),
+              () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const RecordLibraryPage(),
                 ),
               ),
             ),
@@ -311,6 +336,11 @@ class _HumanVsHumanGamePageState extends ConsumerState<HumanVsHumanGamePage> {
             icon: const Icon(Icons.save),
             onPressed: _saveGame,
             tooltip: '保存棋局',
+          ),
+          RecordSaver.button(
+            context,
+            ref,
+            mode: GameMode.humanVsHuman,
           ),
         ],
       ),
@@ -562,13 +592,8 @@ class _HumanVsHumanGamePageState extends ConsumerState<HumanVsHumanGamePage> {
     }
   }
 
-  void _shareGame() {
-    // TODO: 实现分享棋局功能
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('分享功能开发中'),
-      ),
-    );
+  Future<void> _shareGame() async {
+    await shareCurrentGame(context, ref);
   }
 
   void _onMoveFinished() {

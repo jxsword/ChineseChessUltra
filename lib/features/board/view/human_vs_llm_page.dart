@@ -9,6 +9,7 @@ import '../../shared/engine/llm_settings.dart';
 import '../../shared/engine/move_source.dart';
 import '../../storage/game_mode.dart';
 import '../../storage/repository.dart';
+import '../../record/record_saver.dart';
 import '../model/board_state.dart';
 import '../model/move.dart';
 import '../viewmodel/board_vm.dart';
@@ -208,6 +209,7 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
             onPressed: _newGame,
             tooltip: '新游戏',
           ),
+          RecordSaver.button(context, ref, mode: GameMode.humanVsLlm),
         ],
       ),
       body: Column(

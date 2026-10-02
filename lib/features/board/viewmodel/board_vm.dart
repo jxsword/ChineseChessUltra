@@ -293,6 +293,17 @@ class BoardViewModel extends Notifier<BoardState> {
     );
   }
 
+  /// 认负（[loser] 方判负）：大模型走子失败等场景显式终局，
+  /// 使 ResultBanner/棋谱结果/自动存档恢复判定有据可依。
+  void resign(Side loser) {
+    _inputLocked = false;
+    state = _snapshot().copyWith(
+      result: loser.isRed ? GameResult.blackWins : GameResult.redWins,
+      selected: null,
+      legalTargets: const <Position>[],
+    );
+  }
+
   /// 将当前局面状态序列化为可保存数据。
   ({String fen, List<Move> moves}) serialize() {
     return (fen: state.fen, moves: List.from(_moveHistory));

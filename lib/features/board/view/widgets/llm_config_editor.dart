@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../shared/engine/llm_config.dart';
+import '../../../shared/engine/llm_config_store.dart';
 import '../../../shared/engine/llm_move_source.dart';
 
 /// 单侧大模型配置编辑卡（人机·大模型页与大模型对战页共用）。

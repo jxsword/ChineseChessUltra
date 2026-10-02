@@ -15,6 +15,7 @@ import '../puzzle/model/iccs.dart';
 import '../record/game_record.dart';
 import '../record/record_repository.dart';
 import '../shared/engine/llm_config.dart';
+import '../shared/engine/llm_config_store.dart';
 import '../shared/engine/llm_solve_assist.dart';
 import '../shared/engine/move_source.dart';
 import '../shared/engine/vision_board_reader.dart';
@@ -53,6 +54,10 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
   Timer? _visionTimer;
   int _visionElapsed = 0;
 
+  /// FEN 导入输入框（字段持有：build 内创建会泄漏且被识图计时
+  /// 触发的整页 rebuild 每秒清空输入）。
+  final TextEditingController _fenController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -63,6 +68,7 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
   void dispose() {
     _tabController.dispose();
     _visionTimer?.cancel();
+    _fenController.dispose();
     super.dispose();
   }
 
@@ -326,7 +332,7 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
   // ---------------------------------------------------------------------------
 
   Widget _buildFenTab() {
-    final controller = TextEditingController();
+    final controller = _fenController;
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
@@ -342,7 +348,7 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
         ),
         const SizedBox(height: 12),
         FilledButton.tonalIcon(
-          onPressed: () => _importFen(controller.text),
+          onPressed: () => _importFen(_fenController.text),
           icon: const Icon(Icons.download),
           label: const Text('解析并载入棋盘'),
         ),
@@ -397,7 +403,7 @@ class _EndgameStudioPageState extends ConsumerState<EndgameStudioPage>
             padding: const EdgeInsets.only(top: 8),
             child: Text(
               '识别中… 已用时 $_visionElapsed 秒'
-              '（一般 5~20 秒；大图或思考型模型会更久，超时上限 120 秒）',
+              '（一般 5~20 秒；大图或思考型模型会更久，单次超时 120 秒 × 最多 2 次）',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),

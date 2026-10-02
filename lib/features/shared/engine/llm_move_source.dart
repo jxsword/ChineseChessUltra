@@ -9,6 +9,7 @@ import '../../board/model/move.dart';
 import '../../board/model/move_notation.dart';
 import '../../board/model/piece.dart';
 import 'llm_config.dart';
+import 'move_annotation.dart';
 import 'move_source.dart';
 
 /// Prompt 组装（纯函数，便于单测）。
@@ -66,6 +67,96 @@ class LlmPrompts {
       '\n\n你上一次的回复无效（$reason）。'
       '请重新回答：整个回复只含一行「着法: 起点-终点」，'
       '着法必须取自合法着法清单，不要输出任何其他文字。';
+
+  // ---------------------------------------------------------------------------
+  // Prompt v2（五期 P0）：棋盘图 + 着法注解 + 放开分析段
+  // ---------------------------------------------------------------------------
+
+  /// v2 系统提示：允许先输出分析段，最后一行才是着法。
+  ///
+  /// 解析器 [LlmMoveParser.extract] 优先取「着法:」标记后的坐标，
+  /// 与本格式天然兼容。
+  static String systemV2(Side side, {bool withBucketGuide = false}) {
+    final bucketGuide = withBucketGuide
+        ? '合法着法清单中每条着法附有括号注解（中文记法/吃子/将军）'
+            '与「—」后的引擎评估分档，请优先考虑评估为「最佳/均势」的着法，'
+            '避免选择「大亏/致命」档的着法。'
+        : '合法着法清单中每条着法附有括号注解（中文记法/吃子/将军）。';
+    final sideName = side.isRed ? '红方' : '黑方';
+    return '你是中国象棋对弈引擎的着法接口，本局执$sideName。\n'
+        '坐标约定：列用字母 a-i（从左到右），行用数字 0-9'
+        '（0 为黑方底线、棋盘顶部，9 为红方底线、棋盘底部）。\n'
+        '你只能从用户提供的「合法着法清单」中选择一步，禁止编造清单之外的着法。\n'
+        '\n'
+        '【回复格式（唯一允许的格式，共两段）】\n'
+        '第一段以「分析:」开头，用一两句话（不超过 100 字）说明你的计划'
+        '（进攻目标、需要提防的威胁）。\n'
+        '最后一段为一行，形式为：\n'
+        '着法: 起点-终点\n'
+        '示例：着法: b2-e2\n'
+        '\n'
+        + bucketGuide;
+  }
+
+  /// v2 用户提示：FEN + 棋盘 ASCII 图 + 整局历史（≤60 着）+
+  /// 逐条注解的合法清单；历史出现来回重复时附循环警示。
+  static String userV2({
+    required Board board,
+    required List<Move> history,
+    required List<Move> legalMoves,
+  }) {
+    final buf = StringBuffer();
+    buf.writeln('【当前局面 FEN】${board.toFen()}');
+    buf.write('【棋盘图】\n');
+    buf.write(MoveAnnotation.asciiBoard(board));
+    buf.writeln('【轮走方】${board.isRedTurn ? '红方' : '黑方'}（该方是你）');
+    buf.writeln('【对局着法（中文记法，最新在最后）】${_historyText(history)}');
+    if (_looksLikeRepetition(history)) {
+      buf.writeln('【警示】最近着法出现来回重复。长将/长捉判负，'
+          '重复局面会被视为无效——请选择打破循环的着法。');
+    }
+    buf.writeln(
+        '【合法着法清单（共 ${legalMoves.length} 条，必须从中选择一条；'
+        '括号内为中文记法/吃子/将军注解）】');
+    for (final move in legalMoves) {
+      buf.writeln(MoveAnnotation.annotate(board, move));
+    }
+    buf.write('【输出】先输出「分析:」段，最后一行输出「着法: 起点-终点」'
+        '（起点与终点均取自上方清单）');
+    return buf.toString();
+  }
+
+  /// v2 非法回复反馈：回显上次着法与原因。
+  static String retryFeedbackV2({
+    required String reason,
+    String? lastCode,
+  }) =>
+      '\n\n你上一次的回复${lastCode == null ? '' : '的着法 $lastCode'}无效'
+      '（$reason）。着法必须取自合法着法清单。'
+      '请重新回答：先「分析:」一两句，最后一行「着法: 起点-终点」。';
+
+  /// 历史中文记法文本：v2 扩到整局（>60 着从最早截断）。
+  static String _historyText(List<Move> history) {
+    if (history.isEmpty) return '（开局，暂无历史）';
+    final recent = history.length > 60 ? history.sublist(history.length - 60) : history;
+    final parts = <String>[];
+    for (final move in recent) {
+      final piece = move.piece;
+      parts.add(piece == null ? encodeMove(move) : move.chineseNotation(piece));
+    }
+    return parts.join('  ');
+  }
+
+  /// 检测历史末尾的来回重复（最近 4 着两两相同）。
+  static bool _looksLikeRepetition(List<Move> history) {
+    if (history.length < 4) return false;
+    // 红黑交替下"同侧同 from 重复"在几何上不可能，必须比互逆：
+    // 红 A→B、黑 C→D、红 B→A、黑 D→C。
+    bool isInverse(Move a, Move b) => a.from == b.to && a.to == b.from;
+    final n = history.length;
+    return isInverse(history[n - 1], history[n - 3]) &&
+        isInverse(history[n - 2], history[n - 4]);
+  }
 }
 
 /// 从模型回复中提取着法（纯函数，便于单测）。
@@ -131,6 +222,9 @@ class LlmMoveSource implements MoveSource {
   /// 单次回复的最大 token 数（思考型模型的思维链也计入，需留足预算）。
   static const int _maxTokens = 4096;
 
+  /// Prompt v2 的 token 预算（分析段 + 更长历史/清单）。
+  static const int _maxTokensV2 = 8192;
+
   /// 总耗时上限 = 空闲超时 × 该系数（防止思维链无限制输出）。
   static const int _totalCapFactor = 4;
 
@@ -139,11 +233,16 @@ class LlmMoveSource implements MoveSource {
     this.timeout = const Duration(seconds: 60),
     this.maxAttempts = 3,
     LlmFallback fallback = LlmFallback.builtinAi,
+    this.usePromptV2 = false,
     http.Client? client,
   })  : _fallbackMode = fallback,
         _client = client;
 
   final LlmConfig config;
+
+  /// 是否使用 Prompt v2（棋盘图 + 着法注解 + 分析段，五期 P0）。
+  /// 默认 false 保留 v1 协议（作能力评估基线）。
+  final bool usePromptV2;
 
   /// 单次 HTTP 请求超时。
   final Duration timeout;
@@ -170,12 +269,20 @@ class LlmMoveSource implements MoveSource {
     };
     final legalCodes = codesByMove.keys.toList(growable: false);
 
-    final system = LlmPrompts.system(board.turn);
-    var user = LlmPrompts.user(
-      board: board,
-      history: history,
-      legalCodes: legalCodes,
-    );
+    final useV2 = usePromptV2;
+    final system =
+        useV2 ? LlmPrompts.systemV2(board.turn) : LlmPrompts.system(board.turn);
+    var user = useV2
+        ? LlmPrompts.userV2(
+            board: board,
+            history: history,
+            legalMoves: legal,
+          )
+        : LlmPrompts.user(
+            board: board,
+            history: history,
+            legalCodes: legalCodes,
+          );
 
     String? lastNote;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -199,7 +306,9 @@ class LlmMoveSource implements MoveSource {
           ? '无法从回复中解析出着法'
           : '着法 $code 不在合法清单中';
       lastNote = '第 $attempt 次回复无效（$reason）';
-      user = '$user${LlmPrompts.retryFeedback(reason: reason)}';
+      user = '$user${useV2
+          ? LlmPrompts.retryFeedbackV2(reason: reason, lastCode: code)
+          : LlmPrompts.retryFeedback(reason: reason)}';
     }
 
     return _fallback(board, lastNote ?? '模型连续 $maxAttempts 次未给出合法着法');
@@ -253,7 +362,7 @@ class LlmMoveSource implements MoveSource {
             {'role': 'user', 'content': user},
           ],
           'temperature': 0.3,
-          'max_tokens': _maxTokens,
+          'max_tokens': usePromptV2 ? _maxTokensV2 : _maxTokens,
           'stream': true,
           // 思考型模型（Qwen3 等）的关闭开关；其他端点会忽略未知参数，
           // 因此仅在用户显式开启时发送。

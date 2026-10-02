@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/engine/llm_config.dart';
+import '../../shared/engine/llm_config_store.dart';
 import '../../shared/engine/llm_move_source.dart';
+import '../../shared/engine/hybrid_llm_move_source.dart';
 import '../../shared/engine/llm_settings.dart';
 import '../../shared/engine/move_source.dart';
 import '../../storage/game_mode.dart';
@@ -13,6 +15,7 @@ import '../../record/record_saver.dart';
 import '../model/board_state.dart';
 import '../model/move.dart';
 import '../model/move_notation.dart';
+import '../model/piece.dart';
 import '../viewmodel/board_vm.dart';
 import '../viewmodel/game_auto_save.dart';
 import '../viewmodel/game_restore.dart';
@@ -45,6 +48,11 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
   LlmConfig _redConfig = const LlmConfig();
   LlmConfig _blackConfig = const LlmConfig();
 
+  /// 配置是否已从安全存储加载完成：dispose 回写仅在加载完成后进行，
+  /// 防止"进入页面即退出"用空配置覆盖红黑两侧的端点与 Key。
+  bool _configsLoaded = false;
+  bool _settingsLoaded = false;
+
   /// 配置改动自动保存的防抖定时器。
   Timer? _autosaveTimer;
 
@@ -55,6 +63,11 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
   int _timeoutSeconds = 60;
   int _maxAttempts = 3;
   LlmFallback _fallback = LlmFallback.builtinAi;
+  AdvisorMode _advisorMode = AdvisorMode.candidate;
+  int _strengthBlend = 50;
+  int _advisorDifficulty = 5;
+  int _redBlend = 50;
+  int _blackBlend = 50;
   int _intervalSeconds = 1;
 
   bool _isRunning = false;
@@ -163,6 +176,12 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
       _maxAttempts = settings.maxAttempts;
       _fallback = settings.fallback;
       _intervalSeconds = settings.intervalSeconds;
+      _advisorMode = settings.advisorMode;
+      _strengthBlend = settings.strengthBlend;
+      _advisorDifficulty = settings.advisorDifficulty;
+      _redBlend = settings.redStrengthBlend;
+      _blackBlend = settings.blackStrengthBlend;
+      _settingsLoaded = true;
     });
   }
 
@@ -170,12 +189,18 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
   void _scheduleAutosave() {
     _autosaveTimer?.cancel();
     _autosaveTimer = Timer(const Duration(milliseconds: 800), () {
+      if (!mounted || !_configsLoaded || !_settingsLoaded) return;
       _saveConfigs(showFeedback: false);
       _settingsStore.save(LlmGameSettings(
         timeoutSeconds: _timeoutSeconds,
         maxAttempts: _maxAttempts,
         fallback: _fallback,
         intervalSeconds: _intervalSeconds,
+        advisorMode: _advisorMode,
+        strengthBlend: _strengthBlend,
+        advisorDifficulty: _advisorDifficulty,
+        redStrengthBlend: _redBlend,
+        blackStrengthBlend: _blackBlend,
       ));
     });
   }
@@ -187,6 +212,7 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
     setState(() {
       _redConfig = red;
       _blackConfig = black;
+      _configsLoaded = true;
     });
   }
 
@@ -195,13 +221,22 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
     _autosaveTimer?.cancel();
     // 离开页面：按全局"自动保存"开关触发棋局保存。
     _autoSave.dispose();
-    _saveConfigs(showFeedback: false);
-    _settingsStore.save(LlmGameSettings(
+    if (_configsLoaded) {
+      _saveConfigs(showFeedback: false);
+    }
+    if (_configsLoaded && _settingsLoaded) {
+      _settingsStore.save(LlmGameSettings(
       timeoutSeconds: _timeoutSeconds,
       maxAttempts: _maxAttempts,
       fallback: _fallback,
       intervalSeconds: _intervalSeconds,
-    ));
+      advisorMode: _advisorMode,
+      strengthBlend: _strengthBlend,
+      advisorDifficulty: _advisorDifficulty,
+      redStrengthBlend: _redBlend,
+      blackStrengthBlend: _blackBlend,
+      ));
+    }
     // 对局中途离开页面时解锁棋盘输入，避免全局 ViewModel 残留锁定。
     _viewModel.unlockInput();
     super.dispose();
@@ -403,6 +438,60 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
             _scheduleAutosave();
           },
         ),
+        _buildDropdownTile(
+          label: '引擎参谋',
+          value: _advisorMode,
+          items: const {
+            AdvisorMode.off: '关闭（纯大模型）',
+            AdvisorMode.candidate: '候选模式（引擎出名单）',
+            AdvisorMode.gate: '护航模式（引擎否决）',
+          },
+          onChanged: (value) {
+            setState(() => _advisorMode = value);
+            _scheduleAutosave();
+          },
+        ),
+        if (_advisorMode != AdvisorMode.off) ...[
+          _buildDropdownTile(
+            label: '红方强度',
+            value: _redBlend,
+            items: const {
+              0: '0（最严/最稳）',
+              25: '25',
+              50: '50（均衡）',
+              75: '75',
+              100: '100（最自由）',
+            },
+            onChanged: (value) {
+              setState(() => _redBlend = value);
+              _scheduleAutosave();
+            },
+          ),
+          _buildDropdownTile(
+            label: '黑方强度',
+            value: _blackBlend,
+            items: const {
+              0: '0（最严/最稳）',
+              25: '25',
+              50: '50（均衡）',
+              75: '75',
+              100: '100（最自由）',
+            },
+            onChanged: (value) {
+              setState(() => _blackBlend = value);
+              _scheduleAutosave();
+            },
+          ),
+          _buildDropdownTile(
+            label: '参谋深度',
+            value: _advisorDifficulty,
+            items: const {1: '快（2 层）', 3: '中（4 层）', 5: '强（6 层）'},
+            onChanged: (value) {
+              setState(() => _advisorDifficulty = value);
+              _scheduleAutosave();
+            },
+          ),
+        ],
       ],
     );
   }
@@ -539,7 +628,12 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
       _isPaused = !_isPaused;
       _statusText = _isPaused ? '已暂停' : '继续对局…';
     });
-    if (!_isPaused) _runLoop();
+    if (!_isPaused) {
+      // 作废旧循环的在途回复：否则暂停→恢复期间旧循环苏醒后仍会通过
+      // seq/paused 双重检查，与新循环并发驱动两条对局。
+      _gameSeq++;
+      _runLoop();
+    }
   }
 
   void _stop() {
@@ -593,13 +687,24 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
       // await 前快照棋盘与历史。
       final boardSnapshot = viewModel.board.copy();
       final history = List<Move>.from(state.moveHistory);
-      final source = LlmMoveSource(
+      final source = HybridLlmMoveSource(
         config: config,
+        advisorMode: _advisorMode,
+        strengthBlend: isRedTurn ? _redBlend : _blackBlend,
+        advisorDifficulty: _advisorDifficulty,
         timeout: Duration(seconds: _timeoutSeconds),
         maxAttempts: _maxAttempts,
         fallback: _fallback,
       );
-      final result = await source.nextMove(boardSnapshot, history: history);
+      MoveSourceResult result;
+      try {
+        result = await source.nextMove(boardSnapshot, history: history);
+      } on Object catch (e) {
+        // 未预期异常（正常路径已被来源内部兜底）：复位状态防死循环。
+        if (!mounted || seq != _gameSeq) return;
+        _onSideFailed(isRedTurn, '走子来源异常：$e');
+        return;
+      }
 
       // 请求在途期间可能已停止/暂停/重开：作废本次结果。
       if (!mounted || seq != _gameSeq) return;
@@ -655,7 +760,10 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
 
   void _onSideFailed(bool isRed, String reason) {
     _gameSeq++;
-    ref.read(boardViewModelProvider.notifier).unlockInput();
+    final viewModel = ref.read(boardViewModelProvider.notifier);
+    // 显式写入胜负：否则 ResultBanner/棋谱结果为空，自动存档还会把
+    // 这盘"死局"在下次进入时恢复出来。
+    viewModel.resign(isRed ? Side.red : Side.black);
     setState(() {
       _isRunning = false;
       _statusText = '${isRed ? '红方' : '黑方'}走子失败，对局终止';

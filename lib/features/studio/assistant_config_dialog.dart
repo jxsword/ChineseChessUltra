@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../shared/engine/llm_config.dart';
+import '../shared/engine/llm_config_store.dart';
 import '../shared/engine/llm_move_source.dart';
 
 /// 研究助手模型配置弹窗（残局求解辅助 + 棋盘识图共用）。

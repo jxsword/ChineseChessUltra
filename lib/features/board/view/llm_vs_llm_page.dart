@@ -9,6 +9,7 @@ import '../../shared/engine/llm_settings.dart';
 import '../../shared/engine/move_source.dart';
 import '../../storage/game_mode.dart';
 import '../../storage/repository.dart';
+import '../../record/record_saver.dart';
 import '../model/board_state.dart';
 import '../model/move.dart';
 import '../model/move_notation.dart';
@@ -25,7 +26,10 @@ import 'widgets/side_panel.dart';
 /// 由页面对局循环驱动互弈；模型只"提议"着法，合法性由
 /// [BoardViewModel.playMove] 强校验，持续失败按设置降级。
 class LlmVsLlmPage extends ConsumerStatefulWidget {
-  const LlmVsLlmPage({super.key});
+  const LlmVsLlmPage({super.key, this.initialFen});
+
+  /// 棋谱库"进入对战"的起始局面；为空时按标准开局并恢复存档。
+  final String? initialFen;
 
   @override
   ConsumerState<LlmVsLlmPage> createState() => _LlmVsLlmPageState();
@@ -90,6 +94,8 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
     _autoSave = GameAutoSave(
       mode: GameMode.llmVsLlm,
       viewModel: _viewModel,
+      // 棋谱来源不写自动存档。
+      canSave: () => widget.initialFen == null,
     );
     _loadConfigs();
     _loadSettings();
@@ -102,7 +108,12 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
 
   /// 恢复大模型对战存档；无存档则开新局。
   /// 恢复后不自动续跑对局，由用户点"开始"从当前局面继续。
+  /// 棋谱来源（initialFen 非空）不参与存档：直接载入局面，点"开始"续战。
   Future<void> _restoreOrNewGame() async {
+    if (widget.initialFen != null) {
+      _viewModel.newGameFromFen(widget.initialFen!);
+      return;
+    }
     await _autoSave.attach(() async {
       try {
         return await ref.read(gameRepositoryProvider.future);
@@ -233,6 +244,7 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
             onPressed: _newGame,
             tooltip: '新游戏',
           ),
+          RecordSaver.button(context, ref, mode: GameMode.llmVsLlm),
         ],
       ),
       body: Column(
@@ -550,6 +562,10 @@ class _LlmVsLlmPageState extends ConsumerState<LlmVsLlmPage> {
       _blackNote = '';
       _lastMoveText = '';
     });
+    if (widget.initialFen != null) {
+      _viewModel.newGameFromFen(widget.initialFen!);
+      return;
+    }
     _viewModel.newGame();
   }
 

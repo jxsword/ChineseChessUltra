@@ -104,6 +104,39 @@ class LlmPreset {
     LlmPreset('OpenAI', 'https://api.openai.com/v1', 'gpt-4o-mini'),
     custom,
   ];
+
+  /// 视觉理解模型预设（研究助手/识图专用）。
+  ///
+  /// 注意区分：qwen-image-*、各类"图片生成"模型走的是原生多模态生成接口，
+  /// qwen-mt-* 是翻译模型，均不支持 OpenAI 兼容 chat/completions 识图用途。
+  static const List<LlmPreset> visionAll = [
+    LlmPreset(
+      '通义千问 3.8-Max（旗舰视觉，阿里云百炼）',
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      'qwen3.8-max',
+    ),
+    LlmPreset(
+      '通义千问 VL（阿里云百炼）',
+      'https://dashscope.aliyuncs.com/compatible-mode/v1',
+      'qwen-vl-max',
+    ),
+    LlmPreset(
+      '智谱 GLM-4.5V（视觉）',
+      'https://open.bigmodel.cn/api/paas/v4',
+      'glm-4.5v',
+    ),
+    LlmPreset(
+      'OpenAI GPT-4o mini（视觉）',
+      'https://api.openai.com/v1',
+      'gpt-4o-mini',
+    ),
+    LlmPreset(
+      'OpenRouter（视觉）',
+      'https://openrouter.ai/api/v1',
+      'openai/gpt-4o-mini',
+    ),
+    custom,
+  ];
 }
 
 /// 模型配置的持久化（按红/黑双槽位）。
@@ -119,8 +152,19 @@ class LlmConfigStore {
   static const _redSlot = 'llm_config_red';
   static const _blackSlot = 'llm_config_black';
 
+  /// 四期"研究助手模型"槽位：残局求解辅助与棋盘图片识图共用
+  /// （需支持视觉的模型才可识图，纯文本模型仅可做求解辅助）。
+  static const _assistantSlot = 'llm_config_assistant';
+
   Future<LlmConfig> loadRed() => _load(_redSlot);
   Future<LlmConfig> loadBlack() => _load(_blackSlot);
+
+  Future<LlmConfig> loadAssistant() => _load(_assistantSlot);
+
+  Future<void> saveAssistant(LlmConfig config) => _storage.write(
+        key: _assistantSlot,
+        value: config.serialize(),
+      );
 
   Future<void> saveRed(LlmConfig config) => _storage.write(
         key: _redSlot,

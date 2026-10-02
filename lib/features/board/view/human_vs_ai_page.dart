@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../shared/engine/ai_engine.dart';
 import '../../storage/game_mode.dart';
 import '../../storage/repository.dart';
+import '../../record/record_saver.dart';
 import '../model/board_state.dart';
 import '../model/move.dart';
 import '../model/piece.dart';
@@ -159,6 +160,7 @@ class _HumanVsAiPageState extends ConsumerState<HumanVsAiPage> {
             onPressed: _newGame,
             tooltip: '新游戏',
           ),
+          RecordSaver.button(context, ref, mode: GameMode.humanVsAi),
         ],
       ),
       body: Column(

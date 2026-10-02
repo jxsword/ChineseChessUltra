@@ -9,6 +9,7 @@ import '../../shared/engine/llm_settings.dart';
 import '../../shared/engine/move_source.dart';
 import '../../storage/game_mode.dart';
 import '../../storage/repository.dart';
+import '../../record/record_saver.dart';
 import '../model/board_state.dart';
 import '../model/move.dart';
 import '../viewmodel/board_vm.dart';
@@ -24,7 +25,12 @@ import 'widgets/side_panel.dart';
 /// 模型只"提议"着法，最终合法性由 [BoardViewModel.playMove] 强校验；
 /// 模型连续无效时按页面设置降级（内置 AI 兜底 / 判负）。
 class HumanVsLlmPage extends ConsumerStatefulWidget {
-  const HumanVsLlmPage({super.key});
+  const HumanVsLlmPage({super.key, this.initialFen});
+
+  /// 棋谱库"进入对战"的起始局面；为空时按标准开局并恢复存档。
+  ///
+  /// 非空时玩家仍执红、模型执黑：FEN 轮黑则模型先行。
+  final String? initialFen;
 
   @override
   ConsumerState<HumanVsLlmPage> createState() => _HumanVsLlmPageState();
@@ -90,7 +96,16 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
   }
 
   /// 恢复大模型人机对弈存档；无存档则开新局。
+  ///
+  /// 棋谱来源（initialFen 非空）不参与存档：直接开局，轮黑则模型先行。
   Future<void> _restoreOrNewGame() async {
+    if (widget.initialFen != null) {
+      _viewModel.newGameFromFen(widget.initialFen!);
+      if (!_viewModel.current.isRedTurn && !_viewModel.current.isFinished) {
+        _triggerLlmMove();
+      }
+      return;
+    }
     await _autoSave.attach(() async {
       try {
         return await ref.read(gameRepositoryProvider.future);
@@ -208,6 +223,7 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
             onPressed: _newGame,
             tooltip: '新游戏',
           ),
+          RecordSaver.button(context, ref, mode: GameMode.humanVsLlm),
         ],
       ),
       body: Column(
@@ -451,6 +467,13 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
       _isLlmThinking = false;
       _llmNote = '';
     });
+    if (widget.initialFen != null) {
+      _viewModel.newGameFromFen(widget.initialFen!);
+      if (!_viewModel.current.isRedTurn && !_viewModel.current.isFinished) {
+        _triggerLlmMove();
+      }
+      return;
+    }
     _viewModel.newGame();
   }
 

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../shared/engine/llm_config.dart';
 import '../../shared/engine/llm_move_source.dart';
+import '../../shared/engine/hybrid_llm_move_source.dart';
 import '../../shared/engine/llm_settings.dart';
 import '../../shared/engine/move_source.dart';
 import '../../storage/game_mode.dart';
@@ -56,6 +57,9 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
   int _timeoutSeconds = 60;
   int _maxAttempts = 3;
   LlmFallback _fallback = LlmFallback.builtinAi;
+  AdvisorMode _advisorMode = AdvisorMode.candidate;
+  int _strengthBlend = 50;
+  int _advisorDifficulty = 5;
 
   bool _isLlmThinking = false;
 
@@ -159,6 +163,9 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
       _timeoutSeconds = settings.timeoutSeconds;
       _maxAttempts = settings.maxAttempts;
       _fallback = settings.fallback;
+      _advisorMode = settings.advisorMode;
+      _strengthBlend = settings.strengthBlend;
+      _advisorDifficulty = settings.advisorDifficulty;
     });
   }
 
@@ -171,6 +178,9 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
         timeoutSeconds: _timeoutSeconds,
         maxAttempts: _maxAttempts,
         fallback: _fallback,
+        advisorMode: _advisorMode,
+        strengthBlend: _strengthBlend,
+        advisorDifficulty: _advisorDifficulty,
       ));
     });
   }
@@ -191,6 +201,9 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
       timeoutSeconds: _timeoutSeconds,
       maxAttempts: _maxAttempts,
       fallback: _fallback,
+      advisorMode: _advisorMode,
+      strengthBlend: _strengthBlend,
+      advisorDifficulty: _advisorDifficulty,
     ));
     // 模型思考途中离开页面时解锁棋盘输入，避免全局 ViewModel 残留锁定。
     _viewModel.unlockInput();
@@ -374,6 +387,48 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
             _scheduleAutosave();
           },
         ),
+        _buildDropdownTile(
+          label: '引擎参谋',
+          value: _advisorMode,
+          items: const {
+            AdvisorMode.off: '关闭（纯大模型）',
+            AdvisorMode.candidate: '候选模式（引擎出名单）',
+            AdvisorMode.gate: '护航模式（引擎否决）',
+          },
+          enabled: !_isLlmThinking,
+          onChanged: (value) {
+            setState(() => _advisorMode = value);
+            _scheduleAutosave();
+          },
+        ),
+        if (_advisorMode != AdvisorMode.off) ...[
+          _buildDropdownTile(
+            label: '参谋强度',
+            value: _strengthBlend,
+            items: const {
+              0: '0（最严/最稳）',
+              25: '25',
+              50: '50（均衡）',
+              75: '75',
+              100: '100（最自由）',
+            },
+            enabled: !_isLlmThinking,
+            onChanged: (value) {
+              setState(() => _strengthBlend = value);
+              _scheduleAutosave();
+            },
+          ),
+          _buildDropdownTile(
+            label: '参谋深度',
+            value: _advisorDifficulty,
+            items: const {1: '快（2 层）', 3: '中（4 层）', 5: '强（6 层）'},
+            enabled: !_isLlmThinking,
+            onChanged: (value) {
+              setState(() => _advisorDifficulty = value);
+              _scheduleAutosave();
+            },
+          ),
+        ],
       ],
     );
   }
@@ -497,8 +552,11 @@ class _HumanVsLlmPageState extends ConsumerState<HumanVsLlmPage> {
     });
     viewModel.lockInput(); // 模型思考期间锁定棋盘，防止替对方走子
 
-    final source = LlmMoveSource(
+    final source = HybridLlmMoveSource(
       config: _blackConfig,
+      advisorMode: _advisorMode,
+      strengthBlend: _strengthBlend,
+      advisorDifficulty: _advisorDifficulty,
       timeout: Duration(seconds: _timeoutSeconds),
       maxAttempts: _maxAttempts,
       fallback: _fallback,

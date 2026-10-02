@@ -4,6 +4,7 @@ import '../../board/model/board.dart';
 import '../../board/model/move.dart';
 import 'llm_config.dart';
 import 'llm_move_source.dart';
+import 'move_annotation.dart';
 import 'move_source.dart';
 
 /// 残局求解的提示词组装与解析（纯函数，便于单测）。
@@ -29,7 +30,7 @@ class LlmSolvePrompts {
     final buf = StringBuffer();
     buf.writeln('【局面 FEN】${board.toFen()}');
     buf.writeln('【棋盘图（大写为红方、小写为黑方，第一行是黑方底线）】');
-    buf.write(_asciiBoard(board));
+    buf.write(MoveAnnotation.asciiBoard(board));
     buf.writeln('【轮走方】${board.isRedTurn ? '红方' : '黑方'}（求解方）');
     buf.writeln('【任务】判断该局面求解方是否有强制将死的杀法；'
         '若有，给出首选首着与备选首着（均取自合法着法清单）。');
@@ -38,20 +39,6 @@ class LlmSolvePrompts {
     return buf.toString();
   }
 
-  /// 10 行文本棋盘（带行号 0-9 与列标 a-i），供模型直接读位。
-  static String _asciiBoard(Board board) {
-    final buf = StringBuffer();
-    buf.writeln('    a b c d e f g h i');
-    for (var row = 0; row < 10; row++) {
-      final cells = <String>[];
-      for (var col = 0; col < 9; col++) {
-        final piece = board.pieceAt(col, row);
-        cells.add(piece?.fen ?? '.');
-      }
-      buf.writeln('$row  ${cells.join(' ')}');
-    }
-    return buf.toString();
-  }
 }
 
 /// 模型提议的解析结果。
